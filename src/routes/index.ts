@@ -1,5 +1,6 @@
 import { Router } from "express";
 import authRoutes from "./auth.routes";
+import challengesRoutes from "./challenges.routes";
 
 const router = Router();
 
@@ -14,5 +15,6 @@ router.get("/health", (req, res) => {
 
 // API routes
 router.use("/auth", authRoutes);
+router.use("/challenges", challengesRoutes);
 
 export default router;

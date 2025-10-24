@@ -109,4 +109,17 @@ export class AuthService {
     const { password: _, ...userWithoutPassword } = user;
     return userWithoutPassword;
   }
+
+  static async updateProfile(
+    userId: string,
+    data: Partial<Pick<User, "name" | "age" | "city" | "avatar_url">>
+  ): Promise<Omit<User, "password">> {
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data,
+    });
+
+    const { password: _, ...userWithoutPassword } = user;
+    return userWithoutPassword;
+  }
 }

@@ -1,25 +1,115 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
-    provider = "prisma-client-js"
+  provider = "prisma-client-js"
 }
 
 datasource db {
-    provider = "mysql"
-    url      = env("DATABASE_URL")
+  provider = "mysql"
+  url      = env("DATABASE_URL")
 }
 
 model User {
-    id         String   @id @default(uuid())
-    email      String   @unique
-    password   String
-    name       String
-    age        Int
-    city       String
-    avatar_url String?
-    created_at DateTime @default(now())
-    updated_at DateTime @updatedAt
+  id         String      @id @default(uuid())
+  email      String      @unique
+  password   String
+  name       String
+  age        Int
+  city       String
+  avatar_url String?
+  xp         Int          @default(0)
+  level      Int          @default(1)
+  balance    Float        @default(0)
+  created_at DateTime     @default(now())
+  updated_at DateTime     @updatedAt
 
-    @@map("users")
+  challenges        ChallengeParticipant[]
+  createdChallenges Challenge[]
+  transactions      Transaction[]
+  achievements      Achievement[]
+  planSubscription  PlanSubscription?
+
+  @@map("users")
+}
+
+model Challenge {
+  id             String                   @id @default(uuid())
+  title          String
+  description    String
+  category       String                   // Ex: "Fitness", "Bem-estar"
+  startDate      DateTime
+  endDate        DateTime
+  reward         Float                    @default(0)
+  location       String?
+  status         String                   @default("active") // active | completed | draft
+  coverUrl       String?
+  entryPriceCents Int                      @default(0)
+  participants   ChallengeParticipant[]
+  createdById    String
+  createdBy      User                     @relation(fields: [createdById], references: [id])
+  created_at     DateTime                 @default(now())
+
+  @@map("challenges")
+}
+
+model ChallengeParticipant {
+  id           String     @id @default(uuid())
+  userId       String
+  challengeId  String
+  progress     Float      @default(0) // ex: 0 a 100%
+  joinedAt     DateTime   @default(now())
+
+  user         User       @relation(fields: [userId], references: [id])
+  challenge    Challenge  @relation(fields: [challengeId], references: [id])
+
+  @@unique([userId, challengeId])
+  @@map("challenge_participants")
+}
+
+model Transaction {
+  id          String    @id @default(uuid())
+  userId      String
+  type        String    // "cashback", "reembolso", "saque"
+  amount      Float
+  created_at  DateTime  @default(now())
+
+  user        User      @relation(fields: [userId], references: [id])
+
+  @@map("transactions")
+}
+
+model Achievement {
+  id          String    @id @default(uuid())
+  userId      String
+  title       String
+  points      Int        @default(0)
+  achievedAt  DateTime   @default(now())
+
+  user        User       @relation(fields: [userId], references: [id])
+
+  @@map("achievements")
+}
+
+model Plan {
+  id          String    @id @default(uuid())
+  name        String    // "Gratuito", "Premium"
+  price       Float
+  benefits    String?   // descrição textual dos benefícios
+  created_at  DateTime  @default(now())
+
+  subscriptions PlanSubscription[]
+
+  @@map("plans")
+}
+
+model PlanSubscription {
+  id          String    @id @default(uuid())
+  userId      String    @unique
+  planId      String
+  startDate   DateTime  @default(now())
+  endDate     DateTime?
+  active      Boolean   @default(true)
+
+  user        User      @relation(fields: [userId], references: [id])
+  plan        Plan      @relation(fields: [planId], references: [id])
+
+  @@map("plan_subscriptions")
 }

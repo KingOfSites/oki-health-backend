@@ -2,7 +2,11 @@ import { Router } from "express";
 import { AuthController } from "../controllers/auth.controller";
 import { validate } from "../middleware/validation";
 import { authenticate } from "../middleware/auth";
-import { signupSchema, signinSchema } from "../validators/auth.validator";
+import {
+  signupSchema,
+  signinSchema,
+  updateProfileSchema,
+} from "../validators/auth.validator";
 
 const router = Router();
 
@@ -26,5 +30,17 @@ router.post("/signin", validate(signinSchema), AuthController.signin);
  * @access  Private
  */
 router.get("/profile", authenticate, AuthController.getProfile);
+
+/**
+ * @route   PUT /api/auth/profile
+ * @desc    Update user profile
+ * @access  Private
+ */
+router.put(
+  "/profile",
+  authenticate,
+  validate(updateProfileSchema),
+  AuthController.updateProfile
+);
 
 export default router;

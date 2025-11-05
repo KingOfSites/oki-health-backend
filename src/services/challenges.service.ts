@@ -67,4 +67,38 @@ export class ChallengesService {
       is_creator: true,
     }));
   }
+
+  static async listAllChallenges() {
+    const challenges = await prisma.challenge.findMany({
+      where: { status: "active" },
+      orderBy: { created_at: "desc" },
+    });
+
+    // Count participants for each challenge
+    const counts = await prisma.challengeParticipant.groupBy({
+      by: ["challengeId"],
+      _count: { challengeId: true },
+      where: { challengeId: { in: challenges.map((c) => c.id) } },
+    });
+
+    const countMap = new Map(
+      counts.map((c) => [c.challengeId, c._count.challengeId])
+    );
+
+    return challenges.map((c) => ({
+      id: c.id,
+      title: c.title,
+      description: c.description,
+      category: c.category,
+      start_date: c.startDate,
+      end_date: c.endDate,
+      reward: c.reward,
+      location: c.location,
+      cover_url: c.coverUrl,
+      entry_price_cents: c.entryPriceCents,
+      status: c.status,
+      created_at: c.created_at,
+      participants_count: countMap.get(c.id) || 0,
+    }));
+  }
 }

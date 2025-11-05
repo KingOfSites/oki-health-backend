@@ -38,4 +38,78 @@ export class ChallengesController {
       next(error);
     }
   }
+
+  static async createChallenge(
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      if (!req.userId) {
+        return res
+          .status(401)
+          .json({ success: false, message: "Não autenticado" });
+      }
+
+      const {
+        title,
+        description,
+        category,
+        startDate,
+        endDate,
+        reward,
+        location,
+        coverUrl,
+        entryPriceCents,
+        maxParticipants,
+      } = req.body;
+
+      // Validações básicas
+      if (!title || !description || !category || !startDate || !endDate) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Campos obrigatórios: title, description, category, startDate, endDate",
+        });
+      }
+
+      if (entryPriceCents < 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Valor de entrada deve ser positivo",
+        });
+      }
+
+      const data = await ChallengesService.createChallenge({
+        createdById: req.userId,
+        title,
+        description: description || "",
+        category,
+        startDate: new Date(startDate),
+        endDate: new Date(endDate),
+        reward: reward || 0,
+        location,
+        coverUrl,
+        entryPriceCents: entryPriceCents || 0,
+        maxParticipants,
+      });
+
+      res.status(201).json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async listAllChallenges(
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const data = await ChallengesService.listAllChallenges();
+      res.json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  }
 }

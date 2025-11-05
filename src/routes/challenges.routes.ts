@@ -14,4 +14,10 @@ router.get(
   ChallengesController.listCreatedChallenges
 );
 
+// Create a new challenge
+router.post("/", authenticate, ChallengesController.createChallenge);
+
+// List all public challenges (no auth required)
+router.get("/all", ChallengesController.listAllChallenges);
+
 export default router;

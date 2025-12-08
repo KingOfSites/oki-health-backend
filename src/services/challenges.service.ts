@@ -4,18 +4,18 @@ export class ChallengesService {
   static async listMyChallenges(userId: string) {
     const rows = await prisma.challengeParticipant.findMany({
       where: { userId },
-      include: {
-        challenge: true,
-      },
+      include: { challenge: true },
       orderBy: { joinedAt: "desc" },
     });
 
     const ids = rows.map((r) => r.challengeId);
+
     const counts = await prisma.challengeParticipant.groupBy({
       by: ["challengeId"],
       _count: { challengeId: true },
       where: { challengeId: { in: ids } },
     });
+
     const countMap = new Map(
       counts.map((c) => [c.challengeId, c._count.challengeId])
     );
@@ -42,7 +42,6 @@ export class ChallengesService {
       orderBy: { created_at: "desc" },
     });
 
-    // Count participants for each challenge
     const counts = await prisma.challengeParticipant.groupBy({
       by: ["challengeId"],
       _count: { challengeId: true },
@@ -74,7 +73,6 @@ export class ChallengesService {
       orderBy: { created_at: "desc" },
     });
 
-    // Count participants for each challenge
     const counts = await prisma.challengeParticipant.groupBy({
       by: ["challengeId"],
       _count: { challengeId: true },
@@ -100,5 +98,27 @@ export class ChallengesService {
       created_at: c.created_at,
       participants_count: countMap.get(c.id) || 0,
     }));
+  }
+
+  // 🟢 A FUNÇÃO QUE FALTAVA — AGORA O CONTROLLER FUNCIONA
+  static async createChallenge(data: {
+    createdById: string;
+    title: string;
+    description: string;
+    category: string;
+    startDate: Date;
+    endDate: Date;
+    reward?: number;
+    location?: string | null;
+    coverUrl?: string | null;
+    entryPriceCents?: number;
+    maxParticipants?: number | null;
+  }) {
+    return prisma.challenge.create({
+      data: {
+        ...data,
+        status: "active", // opcional — remova se não existir no schema
+      },
+    });
   }
 }

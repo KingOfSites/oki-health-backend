@@ -6,7 +6,15 @@ import routes from "./routes";
 import { errorHandler } from "./middleware/errorHandler";
 import prisma from "./config/database";
 
+import challengePostsRoutes from "./routes/challengePosts.routes";
+
 const app = express();
+
+// --------------------------------------------------------
+// BODY PARSER ⚠️ Precisa vir ANTES das rotas! (IMPORTANTE)
+// --------------------------------------------------------
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // Security middleware
 app.use(helmet());
@@ -16,41 +24,28 @@ const allowedOrigins = env.ALLOWED_ORIGINS.split(",");
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (mobile apps, Postman, etc.)
       if (!origin) return callback(null, true);
-
-      if (allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error("Not allowed by CORS"));
-      }
+      if (allowedOrigins.includes(origin)) callback(null, true);
+      else callback(new Error("Not allowed by CORS"));
     },
     credentials: true,
   })
 );
 
-// Body parser
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// --------------------------------------------------------
+// SUAS ROTAS AQUI (agora funcionam com body e uploads)
+// --------------------------------------------------------
+app.use("/api/challenge-posts", challengePostsRoutes);
 
-// Request logging in development
-if (env.NODE_ENV === "development") {
-  app.use((req, res, next) => {
-    console.log(`${req.method} ${req.path}`);
-    next();
-  });
-}
-
-// API routes
+// Rotas principais
 app.use("/api", routes);
 
-// Error handler (must be last)
+// Error handler
 app.use(errorHandler);
 
 // Graceful shutdown
 const gracefulShutdown = async () => {
   console.log("\n🔴 Shutting down gracefully...");
-
   try {
     await prisma.$disconnect();
     console.log("✅ Database connection closed");
@@ -69,7 +64,6 @@ const PORT = parseInt(env.PORT);
 
 const startServer = async () => {
   try {
-    // Test database connection
     await prisma.$connect();
     console.log("✅ Database connected");
 
@@ -77,7 +71,6 @@ const startServer = async () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`📝 Environment: ${env.NODE_ENV}`);
       console.log(`🔗 API: http://localhost:${PORT}/api`);
-      console.log(`❤️  Health check: http://localhost:${PORT}/api/health`);
     });
   } catch (error) {
     console.error("❌ Failed to start server:", error);

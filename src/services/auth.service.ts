@@ -97,18 +97,37 @@ export class AuthService {
     };
   }
 
-  static async getProfile(userId: string): Promise<Omit<User, "password">> {
+  static async getProfile(userId: string): Promise<any> {
     const user = await prisma.user.findUnique({
       where: { id: userId },
+      include: {
+        planSubscription: true, // ← pega assinatura
+      },
     });
-
+  
     if (!user) {
       throw new AppError(404, "Usuário não encontrado");
     }
-
-    const { password: _, ...userWithoutPassword } = user;
-    return userWithoutPassword;
+  
+    // Verifica se assinatura é válida
+    const now = new Date();
+    const subscription = user.planSubscription;
+  
+    const hasValidSubscription =
+      subscription && subscription.endDate && new Date(subscription.endDate) > now;
+  
+    const plan = hasValidSubscription ? "PREMIUM" : "FREE";
+  
+    const { password: _, planSubscription, ...userWithoutPassword } = user;
+  
+    return {
+      ...userWithoutPassword,
+      plan,
+      planName: subscription?.plan?.name || null,
+      planExpiresAt: subscription?.endDate || null,
+    };
   }
+  
 
   static async updateProfile(
     userId: string,

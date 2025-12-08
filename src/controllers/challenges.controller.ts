@@ -64,7 +64,6 @@ export class ChallengesController {
         maxParticipants,
       } = req.body;
 
-      // Validações básicas
       if (!title || !description || !category || !startDate || !endDate) {
         return res.status(400).json({
           success: false,
@@ -108,6 +107,36 @@ export class ChallengesController {
     try {
       const data = await ChallengesService.listAllChallenges();
       res.json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // ✅ NOVO — deletar desafio do banco real
+  static async deleteChallenge(
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      if (!req.userId) {
+        return res
+          .status(401)
+          .json({ success: false, message: "Não autenticado" });
+      }
+
+      const challengeId = req.params.id;
+
+      const deleted = await ChallengesService.deleteChallenge(challengeId, req.userId);
+
+      if (!deleted) {
+        return res.status(403).json({
+          success: false,
+          message: "Você não tem permissão para excluir este desafio",
+        });
+      }
+
+      res.json({ success: true, message: "Desafio excluído com sucesso" });
     } catch (error) {
       next(error);
     }

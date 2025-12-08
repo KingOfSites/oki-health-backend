@@ -1,6 +1,9 @@
 import prisma from "../config/database";
 
 export class ChallengesService {
+  static createChallenge(arg0: { createdById: string; title: any; description: any; category: any; startDate: Date; endDate: Date; reward: any; location: any; coverUrl: any; entryPriceCents: any; maxParticipants: any; }) {
+    throw new Error("Method not implemented.");
+  }
   static async listMyChallenges(userId: string) {
     const rows = await prisma.challengeParticipant.findMany({
       where: { userId },
@@ -100,5 +103,17 @@ export class ChallengesService {
       created_at: c.created_at,
       participants_count: countMap.get(c.id) || 0,
     }));
+  }
+  static async deleteChallenge(challengeId: string, userId: string) {
+    const challenge = await prisma.challenge.findUnique({
+      where: { id: challengeId, createdById: userId },
+    });
+    if (!challenge) {
+      return false;
+    }
+    const deleted = await prisma.challenge.delete({
+      where: { id: challenge.id },
+    });
+    return deleted ? true : false;
   }
 }

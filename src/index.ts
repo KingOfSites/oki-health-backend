@@ -5,23 +5,34 @@ import { env } from "./config/env";
 import routes from "./routes";
 import { errorHandler } from "./middleware/errorHandler";
 import prisma from "./config/database";
+import subscribeRoutes from "./routes/subscribe.routes";
 
 const app = express();
 
-// Security middleware
+// ---------------------------------------------------
+// ✅ 1. SECURITY + CORS ANTES DE QUALQUER ROTA
+// ---------------------------------------------------
+
 app.use(helmet());
 
-// CORS configuration
-const allowedOrigins = env.ALLOWED_ORIGINS.split(",");
+// Allowed origins
+let allowedOrigins = env.ALLOWED_ORIGINS.split(",");
+
+// Garantir localhost 8080 para o frontend
+if (!allowedOrigins.includes("http://localhost:8080")) {
+  allowedOrigins.push("http://localhost:8080");
+}
+
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (mobile apps, Postman, etc.)
+      // Permite chamadas internas e ferramentas (Postman, curl, mobile app)
       if (!origin) return callback(null, true);
 
       if (allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
+        console.log("❌ Blocked by CORS:", origin);
         callback(new Error("Not allowed by CORS"));
       }
     },
@@ -29,11 +40,15 @@ app.use(
   })
 );
 
-// Body parser
+// ---------------------------------------------------
+// Body Parser
+// ---------------------------------------------------
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Request logging in development
+// ---------------------------------------------------
+// Request logging (dev only)
+// ---------------------------------------------------
 if (env.NODE_ENV === "development") {
   app.use((req, res, next) => {
     console.log(`${req.method} ${req.path}`);
@@ -41,13 +56,24 @@ if (env.NODE_ENV === "development") {
   });
 }
 
-// API routes
+// ---------------------------------------------------
+// ✅ 2. AGORA SIM AS ROTAS
+// ---------------------------------------------------
+
+// Subscribe (tem que ficar DEPOIS do CORS)
+app.use("/api/subscribe", subscribeRoutes);
+
+// Demais rotas
 app.use("/api", routes);
 
-// Error handler (must be last)
+// ---------------------------------------------------
+// Error Handler
+// ---------------------------------------------------
 app.use(errorHandler);
 
-// Graceful shutdown
+// ---------------------------------------------------
+// Graceful Shutdown
+// ---------------------------------------------------
 const gracefulShutdown = async () => {
   console.log("\n🔴 Shutting down gracefully...");
 
@@ -64,12 +90,13 @@ const gracefulShutdown = async () => {
 process.on("SIGTERM", gracefulShutdown);
 process.on("SIGINT", gracefulShutdown);
 
-// Start server
+// ---------------------------------------------------
+// Start Server
+// ---------------------------------------------------
 const PORT = parseInt(env.PORT);
 
 const startServer = async () => {
   try {
-    // Test database connection
     await prisma.$connect();
     console.log("✅ Database connected");
 

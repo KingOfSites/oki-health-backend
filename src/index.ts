@@ -7,12 +7,24 @@ import { errorHandler } from "./middleware/errorHandler";
 import prisma from "./config/database";
 import subscribeRoutes from "./routes/subscribe.routes";
 
+import challengePostsRoutes from "./routes/challengePosts.routes";
+
 const app = express();
 
+<<<<<<< HEAD
+// --------------------------------------------------------
+// BODY PARSER ⚠️ Precisa vir ANTES das rotas! (IMPORTANTE)
+// --------------------------------------------------------
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Security middleware
+=======
 // ---------------------------------------------------
 // ✅ 1. SECURITY + CORS ANTES DE QUALQUER ROTA
 // ---------------------------------------------------
 
+>>>>>>> 6d29e47c345605e6dd8eec5a75ed134df8f9ee05
 app.use(helmet());
 
 // Allowed origins
@@ -26,6 +38,11 @@ if (!allowedOrigins.includes("http://localhost:8080")) {
 app.use(
   cors({
     origin: (origin, callback) => {
+<<<<<<< HEAD
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) callback(null, true);
+      else callback(new Error("Not allowed by CORS"));
+=======
       // Permite chamadas internas e ferramentas (Postman, curl, mobile app)
       if (!origin) return callback(null, true);
 
@@ -35,11 +52,23 @@ app.use(
         console.log("❌ Blocked by CORS:", origin);
         callback(new Error("Not allowed by CORS"));
       }
+>>>>>>> 6d29e47c345605e6dd8eec5a75ed134df8f9ee05
     },
     credentials: true,
   })
 );
 
+<<<<<<< HEAD
+// --------------------------------------------------------
+// SUAS ROTAS AQUI (agora funcionam com body e uploads)
+// --------------------------------------------------------
+app.use("/api/challenge-posts", challengePostsRoutes);
+
+// Rotas principais
+app.use("/api", routes);
+
+// Error handler
+=======
 // ---------------------------------------------------
 // Body Parser
 // ---------------------------------------------------
@@ -69,6 +98,7 @@ app.use("/api", routes);
 // ---------------------------------------------------
 // Error Handler
 // ---------------------------------------------------
+>>>>>>> 6d29e47c345605e6dd8eec5a75ed134df8f9ee05
 app.use(errorHandler);
 
 // ---------------------------------------------------
@@ -76,7 +106,6 @@ app.use(errorHandler);
 // ---------------------------------------------------
 const gracefulShutdown = async () => {
   console.log("\n🔴 Shutting down gracefully...");
-
   try {
     await prisma.$disconnect();
     console.log("✅ Database connection closed");
@@ -104,7 +133,6 @@ const startServer = async () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`📝 Environment: ${env.NODE_ENV}`);
       console.log(`🔗 API: http://localhost:${PORT}/api`);
-      console.log(`❤️  Health check: http://localhost:${PORT}/api/health`);
     });
   } catch (error) {
     console.error("❌ Failed to start server:", error);

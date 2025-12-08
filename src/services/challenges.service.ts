@@ -7,18 +7,18 @@ export class ChallengesService {
   static async listMyChallenges(userId: string) {
     const rows = await prisma.challengeParticipant.findMany({
       where: { userId },
-      include: {
-        challenge: true,
-      },
+      include: { challenge: true },
       orderBy: { joinedAt: "desc" },
     });
 
     const ids = rows.map((r) => r.challengeId);
+
     const counts = await prisma.challengeParticipant.groupBy({
       by: ["challengeId"],
       _count: { challengeId: true },
       where: { challengeId: { in: ids } },
     });
+
     const countMap = new Map(
       counts.map((c) => [c.challengeId, c._count.challengeId])
     );
@@ -45,7 +45,6 @@ export class ChallengesService {
       orderBy: { created_at: "desc" },
     });
 
-    // Count participants for each challenge
     const counts = await prisma.challengeParticipant.groupBy({
       by: ["challengeId"],
       _count: { challengeId: true },
@@ -77,7 +76,6 @@ export class ChallengesService {
       orderBy: { created_at: "desc" },
     });
 
-    // Count participants for each challenge
     const counts = await prisma.challengeParticipant.groupBy({
       by: ["challengeId"],
       _count: { challengeId: true },
@@ -104,6 +102,29 @@ export class ChallengesService {
       participants_count: countMap.get(c.id) || 0,
     }));
   }
+<<<<<<< HEAD
+
+  // 🟢 A FUNÇÃO QUE FALTAVA — AGORA O CONTROLLER FUNCIONA
+  static async createChallenge(data: {
+    createdById: string;
+    title: string;
+    description: string;
+    category: string;
+    startDate: Date;
+    endDate: Date;
+    reward?: number;
+    location?: string | null;
+    coverUrl?: string | null;
+    entryPriceCents?: number;
+    maxParticipants?: number | null;
+  }) {
+    return prisma.challenge.create({
+      data: {
+        ...data,
+        status: "active", // opcional — remova se não existir no schema
+      },
+    });
+=======
   static async deleteChallenge(challengeId: string, userId: string) {
     const challenge = await prisma.challenge.findUnique({
       where: { id: challengeId, createdById: userId },
@@ -115,5 +136,6 @@ export class ChallengesService {
       where: { id: challenge.id },
     });
     return deleted ? true : false;
+>>>>>>> 6d29e47c345605e6dd8eec5a75ed134df8f9ee05
   }
 }

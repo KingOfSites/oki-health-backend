@@ -22,7 +22,17 @@ export class ChallengeChatController {
         orderBy: { created_at: "asc" }
       });
 
-      return res.json({ success: true, messages });
+      // 🔥 Formato que o FRONT-END espera:
+      const formatted = messages.map((msg) => ({
+        id: msg.id,
+        user_id: msg.userId,
+        user_name: msg.user?.name || "Usuário",
+        avatar_url: msg.user?.avatar_url || null,
+        message: msg.message,
+        created_at: msg.created_at
+      }));
+
+      return res.json({ data: formatted });
 
     } catch (err) {
       console.error(err);
@@ -58,7 +68,17 @@ export class ChallengeChatController {
         }
       });
 
-      return res.json({ success: true, message: newMessage });
+      // 🔥 Mesmo formato do GET:
+      const formatted = {
+        id: newMessage.id,
+        user_id: newMessage.userId,
+        user_name: newMessage.user?.name,
+        avatar_url: newMessage.user?.avatar_url,
+        message: newMessage.message,
+        created_at: newMessage.created_at
+      };
+
+      return res.json({ data: formatted });
 
     } catch (err) {
       console.error(err);

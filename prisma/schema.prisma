@@ -8,16 +8,20 @@ datasource db {
 }
 
 model User {
-  id         String   @id @default(uuid())
-  email      String   @unique
+  id         String  @id @default(uuid())
+  email      String  @unique
   password   String
   name       String
   age        Int
   city       String
   avatar_url String?
-  xp         Int      @default(0)
-  level      Int      @default(1)
-  balance    Float    @default(0)
+  xp         Int     @default(0)
+  level      Int     @default(1)
+
+  balance         Float @default(0)
+  total_earned    Float @default(0)
+  total_withdrawn Float @default(0)
+
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
@@ -26,10 +30,8 @@ model User {
   transactions      Transaction[]
   achievements      Achievement[]
   planSubscription  PlanSubscription?
-
   posts             ChallengePost[]
-
-  chatMessages ChallengeChat[]
+  chatMessages      ChallengeChat[]
 
   @@map("users")
 }
@@ -53,7 +55,7 @@ model Challenge {
   created_at      DateTime               @default(now())
 
   // 🔥 ADICIONADO — relação inversa com ChallengePost
-  posts           ChallengePost[]
+  posts ChallengePost[]
 
   chatMessages ChallengeChat[]
 
@@ -76,7 +78,7 @@ model ChallengeParticipant {
 
 model Transaction {
   id         String   @id @default(uuid())
-  userId     String?   // <-- permitir nulo TEMPORARIAMENTE
+  userId     String? // <-- permitir nulo TEMPORARIAMENTE
   type       String
   amount     Float
   created_at DateTime @default(now())
@@ -85,7 +87,6 @@ model Transaction {
 
   @@map("transactions")
 }
-
 
 model Achievement {
   id         String   @id @default(uuid())
@@ -133,8 +134,8 @@ model ChallengePost {
   caption     String?
   created_at  DateTime @default(now())
 
-  challenge   Challenge @relation(fields: [challengeId], references: [id])
-  user        User      @relation(fields: [userId], references: [id])
+  challenge Challenge @relation(fields: [challengeId], references: [id])
+  user      User      @relation(fields: [userId], references: [id])
 
   @@map("challenge_posts")
 }
@@ -146,11 +147,8 @@ model ChallengeChat {
   message     String
   created_at  DateTime @default(now())
 
-  challenge   Challenge @relation(fields: [challengeId], references: [id])
-  user        User      @relation(fields: [userId], references: [id])
+  challenge Challenge @relation(fields: [challengeId], references: [id])
+  user      User      @relation(fields: [userId], references: [id])
 
   @@map("challenge_chat")
 }
-
-
-

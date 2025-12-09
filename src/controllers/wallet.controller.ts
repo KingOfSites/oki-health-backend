@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import db from "../config/database"; // 👉 CORRIGIDO
+import db from "../config/database"; // PrismaClient
 import crypto from "crypto";
 
 export class WalletController {
@@ -12,22 +12,25 @@ export class WalletController {
       const userId = (req as any).user?.id;
       if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
-      const [rows]: any = await db.query(
-        "SELECT balance, total_earned, total_withdrawn FROM users WHERE id = ?",
-        [userId]
-      );
+      const user = await db.user.findUnique({
+        where: { id: userId },
+        select: {
+          balance: true,
+          total_earned: true,
+          total_withdrawn: true,
+        },
+      });
 
-      if (!rows.length) {
+      if (!user) {
         return res.status(404).json({ error: "User not found" });
       }
-
-      const user = rows[0];
 
       return res.json({
         balance: user.balance ?? 0,
         total_earned: user.total_earned ?? 0,
         total_withdrawn: user.total_withdrawn ?? 0,
       });
+
     } catch (err) {
       console.error("[WalletController.getWallet] error:", err);
       return res.status(500).json({ error: "Internal server error" });
@@ -42,12 +45,20 @@ export class WalletController {
       const userId = (req as any).user?.id;
       if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
-      const [rows]: any = await db.query(
-        "SELECT id, amount, type, description, status, created_at FROM transactions WHERE user_id = ? ORDER BY created_at DESC LIMIT 20",
-        [userId]
-      );
+      const rows = await db.transaction.findMany({
+        where: { userId },
+        orderBy: { created_at: "desc" },
+        take: 20,
+        select: {
+          id: true,
+          amount: true,
+          type: true,
+          created_at: true,
+        }
+      });
 
       return res.json(rows);
+
     } catch (err) {
       console.error("[WalletController.getTransactions] error:", err);
       return res.status(500).json({ error: "Internal server error" });
@@ -71,18 +82,26 @@ export class WalletController {
       const id = crypto.randomUUID();
 
       // registra transação
-      await db.query(
-        "INSERT INTO transactions (id, user_id, amount, type, description, status) VALUES (?, ?, ?, 'deposit', ?, 'approved')",
-        [id, userId, amount, "Depósito de tokens"]
-      );
+      await db.transaction.create({
+        data: {
+          id,
+          userId,
+          amount,
+          type: "deposit",
+        },
+      });
 
       // atualiza usuário
-      await db.query(
-        "UPDATE users SET balance = balance + ?, total_earned = total_earned + ? WHERE id = ?",
-        [amount, amount, userId]
-      );
+      await db.user.update({
+        where: { id: userId },
+        data: {
+          balance: { increment: amount },
+          total_earned: { increment: amount },
+        },
+      });
 
       return res.json({ success: true, id });
+
     } catch (err) {
       console.error("[WalletController.deposit] error:", err);
       return res.status(500).json({ error: "Internal server error" });
@@ -103,17 +122,16 @@ export class WalletController {
         return res.status(400).json({ error: "Valor inválido" });
       }
 
-      // checar saldo
-      const [rows]: any = await db.query(
-        "SELECT balance FROM users WHERE id = ?",
-        [userId]
-      );
+      const user = await db.user.findUnique({
+        where: { id: userId },
+        select: { balance: true },
+      });
 
-      if (!rows.length) {
+      if (!user) {
         return res.status(404).json({ error: "User not found" });
       }
 
-      const balance = rows[0].balance ?? 0;
+      const balance = user.balance ?? 0;
 
       if (balance < amount) {
         return res.status(400).json({ error: "Saldo insuficiente" });
@@ -122,18 +140,26 @@ export class WalletController {
       const id = crypto.randomUUID();
 
       // cria transação de saque
-      await db.query(
-        "INSERT INTO transactions (id, user_id, amount, type, description, status) VALUES (?, ?, ?, 'withdraw', ?, 'pending')",
-        [id, userId, amount, "Saque solicitado"]
-      );
+      await db.transaction.create({
+        data: {
+          id,
+          userId,
+          amount,
+          type: "withdraw",
+        },
+      });
 
       // atualiza saldo e total sacado
-      await db.query(
-        "UPDATE users SET balance = balance - ?, total_withdrawn = total_withdrawn + ? WHERE id = ?",
-        [amount, amount, userId]
-      );
+      await db.user.update({
+        where: { id: userId },
+        data: {
+          balance: { decrement: amount },
+          total_withdrawn: { increment: amount },
+        },
+      });
 
       return res.json({ success: true, id });
+
     } catch (err) {
       console.error("[WalletController.withdraw] error:", err);
       return res.status(500).json({ error: "Internal server error" });

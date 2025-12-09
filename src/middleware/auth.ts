@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import jwt from "jsonwebtoken";
+import jwt, { JwtPayload } from "jsonwebtoken";
 import { env } from "../config/env";
 import { AppError } from "./errorHandler";
 
@@ -9,7 +9,7 @@ export interface AuthRequest extends Request {
 
 export const authenticate = async (
   req: AuthRequest,
-  res: Response,
+  _res: Response,
   next: NextFunction
 ) => {
   try {
@@ -21,14 +21,26 @@ export const authenticate = async (
 
     const token = authHeader.substring(7);
 
+    if (!env.JWT_SECRET) {
+      throw new Error("JWT_SECRET está ausente no arquivo .env");
+    }
+
+    let decoded: JwtPayload;
+
     try {
-      const decoded = jwt.verify(token, env.JWT_SECRET) as { userId: string };
-      req.userId = decoded.userId;
-      next();
-    } catch (error) {
+      decoded = jwt.verify(token, env.JWT_SECRET as string) as JwtPayload;
+    } catch (err) {
       throw new AppError(401, "Token inválido ou expirado");
     }
+
+    if (!decoded.userId) {
+      throw new AppError(401, "Token não contém userId");
+    }
+
+    req.userId = decoded.userId;
+
+    return next();
   } catch (error) {
-    next(error);
+    return next(error);
   }
 };

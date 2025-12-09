@@ -1,4 +1,4 @@
-import { Request, Response, NextFunction } from "express";
+import { Response, NextFunction } from "express";
 import { AuthRequest } from "../middleware/auth";
 import { ChallengesService } from "../services/challenges.service";
 import prisma from "../config/database";
@@ -19,10 +19,10 @@ export class ChallengesController {
       }
 
       const data = await ChallengesService.listMyChallenges(req.userId);
-      res.json({ success: true, data });
+      return res.json({ success: true, data });
 
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -37,10 +37,10 @@ export class ChallengesController {
       }
 
       const data = await ChallengesService.listCreatedChallenges(req.userId);
-      res.json({ success: true, data });
+      return res.json({ success: true, data });
 
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -91,10 +91,10 @@ export class ChallengesController {
         maxParticipants,
       });
 
-      res.status(201).json({ success: true, data });
+      return res.status(201).json({ success: true, data });
 
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -104,14 +104,14 @@ export class ChallengesController {
   static async searchChallenges(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { location, filter } = req.query;
-  
+
       if (!location || !filter) {
         return res.status(400).json({
           success: false,
           message: "Parâmetros 'location' e 'filter' são obrigatórios",
         });
       }
-  
+
       const challenges = await prisma.challenge.findMany({
         where: {
           location: {
@@ -122,16 +122,15 @@ export class ChallengesController {
           participants: true,
         },
       });
-  
+
       return res.json({
         success: true,
         challenges,
       });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
-  
 
   // ================================
   // ✔️ ENTRAR EM UM DESAFIO
@@ -152,7 +151,7 @@ export class ChallengesController {
       });
 
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -166,10 +165,10 @@ export class ChallengesController {
 
       const data = await ChallengesService.getDetails(challengeId, userId);
 
-      res.json({ success: true, data });
+      return res.json({ success: true, data });
 
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -196,10 +195,10 @@ export class ChallengesController {
         });
       }
 
-      res.json({ success: true, message: "Desafio excluído com sucesso" });
+      return res.json({ success: true, message: "Desafio excluído com sucesso" });
 
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 }

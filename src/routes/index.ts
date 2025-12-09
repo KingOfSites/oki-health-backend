@@ -1,22 +1,12 @@
 import { Router } from "express";
 import authRoutes from "./auth.routes";
 import challengesRoutes from "./challenges.routes";
-import subscribeRoutes from "./subscribe.routes";
-import userRoutes from "./user.routes"; // <-- IMPORTANTE
+import walletRoutes from "./wallet.routes";
 
-const router = Router();
-
-router.get("/health", (req, res) => {
-  res.json({
-    success: true,
-    message: "Oki Backend API is running",
-    timestamp: new Date().toISOString(),
-  });
-});
+const router = Router(); // <- TEM QUE VIR AQUI EM CIMA
 
 router.use("/auth", authRoutes);
 router.use("/challenges", challengesRoutes);
-router.use("/subscribe", subscribeRoutes);
-router.use("/user", userRoutes); // <-- REGISTRAR AQUI
+router.use("/wallet", walletRoutes);
 
 export default router;

@@ -45,6 +45,7 @@ model Challenge {
   status          String                 @default("active")
   coverUrl        String?
   entryPriceCents Int                    @default(0)
+  maxParticipants Int?
   participants    ChallengeParticipant[]
   createdById     String
   createdBy       User                   @relation(fields: [createdById], references: [id])

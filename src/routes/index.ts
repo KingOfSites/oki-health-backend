@@ -3,15 +3,16 @@ import { Router } from "express";
 import authRoutes from "./auth.routes";
 import challengesRoutes from "./challenges.routes";
 import walletRoutes from "./wallet.routes";
-import paymentsRoutes from "./payments.routes";
-import subscribeRoutes from "./subscribe.routes";
+import challengeChatRoutes from "./challengeChat.routes";
 
 const router = Router();
 
+// ROTAS PRINCIPAIS
 router.use("/auth", authRoutes);
 router.use("/challenges", challengesRoutes);
 router.use("/wallet", walletRoutes);
-router.use("/payments", paymentsRoutes); // opcional
-router.use("/subscribe", subscribeRoutes); // 🔥 IMPORTANTE
+
+// 🔥 ROTAS DO CHAT DO DESAFIO
+router.use("/challenges", challengeChatRoutes);
 
 export default router;

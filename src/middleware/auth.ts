@@ -1,8 +1,17 @@
-import { Response, NextFunction } from "express";
-import { JWTUtils } from "../utils/jwt";
-import { AuthRequest } from "./auth";
+import { Request, Response, NextFunction } from "express";
+import jwt, { JwtPayload } from "jsonwebtoken";
+import { env } from "../config/env";
+import { AppError } from "./errorHandler";
 
-export const authenticate = (req: AuthRequest, res: Response, next: NextFunction) => {
+export interface AuthRequest extends Request {
+  userId?: string;
+}
+
+export const authenticate = async (
+  req: AuthRequest,
+  _res: Response,
+  next: NextFunction
+) => {
   try {
     const authHeader = req.headers.authorization;
 
@@ -14,12 +23,26 @@ export const authenticate = (req: AuthRequest, res: Response, next: NextFunction
 
     const decoded = JWTUtils.verify(token); // { userId: string }
 
+    if (!env.JWT_SECRET) {
+      throw new Error("JWT_SECRET está ausente no arquivo .env");
+    }
+
+    let decoded: JwtPayload;
+
+    try {
+      decoded = jwt.verify(token, env.JWT_SECRET as string) as JwtPayload;
+    } catch (err) {
+      throw new AppError(401, "Token inválido ou expirado");
+    }
+
+    if (!decoded.userId) {
+      throw new AppError(401, "Token não contém userId");
+    }
+
     req.userId = decoded.userId;
 
-    next();
-
-  } catch (err) {
-    console.error("[authenticate] error:", err);
-    return res.status(401).json({ error: "Token inválido" });
+    return next();
+  } catch (error) {
+    return next(error);
   }
 };

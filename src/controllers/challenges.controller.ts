@@ -1,8 +1,13 @@
 import { Response, NextFunction } from "express";
 import { AuthRequest } from "../middleware/auth";
 import { ChallengesService } from "../services/challenges.service";
+import prisma from "../config/database";
 
 export class ChallengesController {
+
+  // ================================
+  // ✔️ DESAFIOS DO USUÁRIO
+  // ================================
   static async listMyChallenges(
     req: AuthRequest,
     res: Response,
@@ -10,14 +15,14 @@ export class ChallengesController {
   ) {
     try {
       if (!req.userId) {
-        return res
-          .status(401)
-          .json({ success: false, message: "Não autenticado" });
+        return res.status(401).json({ success: false, message: "Não autenticado" });
       }
+
       const data = await ChallengesService.listMyChallenges(req.userId);
-      res.json({ success: true, data });
+      return res.json({ success: true, data });
+
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -28,17 +33,20 @@ export class ChallengesController {
   ) {
     try {
       if (!req.userId) {
-        return res
-          .status(401)
-          .json({ success: false, message: "Não autenticado" });
+        return res.status(401).json({ success: false, message: "Não autenticado" });
       }
+
       const data = await ChallengesService.listCreatedChallenges(req.userId);
-      res.json({ success: true, data });
+      return res.json({ success: true, data });
+
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
+  // ================================
+  // ✔️ CRIAR DESAFIO
+  // ================================
   static async createChallenge(
     req: AuthRequest,
     res: Response,
@@ -46,9 +54,7 @@ export class ChallengesController {
   ) {
     try {
       if (!req.userId) {
-        return res
-          .status(401)
-          .json({ success: false, message: "Não autenticado" });
+        return res.status(401).json({ success: false, message: "Não autenticado" });
       }
 
       const {
@@ -67,22 +73,14 @@ export class ChallengesController {
       if (!title || !description || !category || !startDate || !endDate) {
         return res.status(400).json({
           success: false,
-          message:
-            "Campos obrigatórios: title, description, category, startDate, endDate",
-        });
-      }
-
-      if (entryPriceCents < 0) {
-        return res.status(400).json({
-          success: false,
-          message: "Valor de entrada deve ser positivo",
+          message: "Campos obrigatórios: title, description, category, startDate, endDate",
         });
       }
 
       const data = await ChallengesService.createChallenge({
         createdById: req.userId,
         title,
-        description: description || "",
+        description,
         category,
         startDate: new Date(startDate),
         endDate: new Date(endDate),
@@ -93,26 +91,90 @@ export class ChallengesController {
         maxParticipants,
       });
 
-      res.status(201).json({ success: true, data });
+      return res.status(201).json({ success: true, data });
+
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
-  static async listAllChallenges(
-    req: AuthRequest,
-    res: Response,
-    next: NextFunction
-  ) {
+  // ================================
+  // ✔️ LISTAR TODOS OS DESAFIOS
+  // ================================
+  static async searchChallenges(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const data = await ChallengesService.listAllChallenges();
-      res.json({ success: true, data });
+      const { location, filter } = req.query;
+
+      if (!location || !filter) {
+        return res.status(400).json({
+          success: false,
+          message: "Parâmetros 'location' e 'filter' são obrigatórios",
+        });
+      }
+
+      const challenges = await prisma.challenge.findMany({
+        where: {
+          location: {
+            contains: String(location),
+          },
+        },
+        include: {
+          participants: true,
+        },
+      });
+
+      return res.json({
+        success: true,
+        challenges,
+      });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
-  // ✅ NOVO — deletar desafio do banco real
+  // ================================
+  // ✔️ ENTRAR EM UM DESAFIO
+  // ================================
+  static async joinChallenge(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      if (!req.userId) {
+        return res.status(401).json({ success: false, message: "Não autenticado" });
+      }
+
+      const challengeId = req.params.challengeId;
+      const result = await ChallengesService.joinChallenge(req.userId, challengeId);
+
+      return res.json({
+        success: true,
+        message: "Participação registrada",
+        data: result,
+      });
+
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  // ================================
+  // ✔️ GET DETAILS
+  // ================================
+  static async getDetails(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const userId = req.userId!;
+      const challengeId = req.params.id;
+
+      const data = await ChallengesService.getDetails(challengeId, userId);
+
+      return res.json({ success: true, data });
+
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  // ================================
+  // ✔️ EXCLUIR DESAFIO
+  // ================================
   static async deleteChallenge(
     req: AuthRequest,
     res: Response,
@@ -120,13 +182,10 @@ export class ChallengesController {
   ) {
     try {
       if (!req.userId) {
-        return res
-          .status(401)
-          .json({ success: false, message: "Não autenticado" });
+        return res.status(401).json({ success: false, message: "Não autenticado" });
       }
 
       const challengeId = req.params.id;
-
       const deleted = await ChallengesService.deleteChallenge(challengeId, req.userId);
 
       if (!deleted) {
@@ -136,9 +195,10 @@ export class ChallengesController {
         });
       }
 
-      res.json({ success: true, message: "Desafio excluído com sucesso" });
+      return res.json({ success: true, message: "Desafio excluído com sucesso" });
+
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 }

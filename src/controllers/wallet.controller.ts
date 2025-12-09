@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
-import prisma from "../config/database";
+import db from "../config/database"; // PrismaClient
+import crypto from "crypto";
 
 export class WalletController {
   /**
@@ -12,7 +13,7 @@ export class WalletController {
 
       if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
-      const user = await prisma.user.findUnique({
+      const user = await db.user.findUnique({
         where: { id: userId },
         select: {
           balance: true,
@@ -21,7 +22,9 @@ export class WalletController {
         },
       });
 
-      if (!user) return res.status(404).json({ error: "User not found" });
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
 
       return res.json({
         balance: Math.round(user.balance * 100),
@@ -44,22 +47,62 @@ export class WalletController {
     try {
       const { userId } = req.params;
 
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
+      const rows = await db.transaction.findMany({
+        where: { userId },
+        orderBy: { created_at: "desc" },
+        take: 20,
         select: {
-          balance: true,
-          total_earned: true,
-          total_withdrawn: true,
+          id: true,
+          amount: true,
+          type: true,
+          created_at: true,
+        }
+      });
+
+      return res.json(rows);
+
+    } catch (err) {
+      console.error("[WalletController.getTransactions] error:", err);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+
+  /**
+   * POST /api/wallet/deposit
+   */
+  static async deposit(req: Request, res: Response) {
+    try {
+      const userId = (req as any).user?.id;
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+      const { amount } = req.body as { amount: number };
+
+      if (!amount || amount <= 0) {
+        return res.status(400).json({ error: "Valor inválido" });
+      }
+
+      const id = crypto.randomUUID();
+
+      // registra transação
+      await db.transaction.create({
+        data: {
+          id,
+          userId,
+          amount,
+          type: "deposit",
         },
       });
 
-      if (!user) return res.status(404).json({ error: "User not found" });
-
-      return res.json({
-        tokens: user.balance,
-        totalEarned: user.total_earned,
-        totalWithdrawn: user.total_withdrawn,
+      // atualiza usuário
+      await db.user.update({
+        where: { id: userId },
+        data: {
+          balance: { increment: amount },
+          total_earned: { increment: amount },
+        },
       });
+
+      return res.json({ success: true, id });
 
     } catch (err) {
       console.error("[WalletController.getUserTokenWallet] error:", err);
@@ -76,21 +119,49 @@ export class WalletController {
 
       if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
-      const transactions = await prisma.transaction.findMany({
-        where: { user_id: userId },  // <-- CORRETO!!!
-        orderBy: { created_at: "desc" },
+      const { amount } = req.body as { amount: number };
+
+      if (!amount || amount <= 0) {
+        return res.status(400).json({ error: "Valor inválido" });
+      }
+
+      const user = await db.user.findUnique({
+        where: { id: userId },
+        select: { balance: true },
       });
 
-      const formatted = transactions.map((t) => ({
-        id: t.id,
-        amount_centavos: Math.round(t.amount * 100),
-        transaction_type: t.type,
-        description: t.description ?? null,
-        created_at: t.created_at,
-        status: t.status ?? "completed",
-      }));
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
 
-      return res.json(formatted);
+      const balance = user.balance ?? 0;
+
+      if (balance < amount) {
+        return res.status(400).json({ error: "Saldo insuficiente" });
+      }
+
+      const id = crypto.randomUUID();
+
+      // cria transação de saque
+      await db.transaction.create({
+        data: {
+          id,
+          userId,
+          amount,
+          type: "withdraw",
+        },
+      });
+
+      // atualiza saldo e total sacado
+      await db.user.update({
+        where: { id: userId },
+        data: {
+          balance: { decrement: amount },
+          total_withdrawn: { increment: amount },
+        },
+      });
+
+      return res.json({ success: true, id });
 
     } catch (err) {
       console.error("[WalletController.getTransactions] error:", err);

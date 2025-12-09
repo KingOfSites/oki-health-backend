@@ -3,6 +3,7 @@ import { AuthService } from "../services/auth.service";
 import { AuthRequest } from "../middleware/auth";
 
 export class AuthController {
+
   static async signup(req: Request, res: Response, next: NextFunction) {
     try {
       const result = await AuthService.signup(req.body);

@@ -2,62 +2,88 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import { env } from "./config/env";
-import routes from "./routes";
-import { errorHandler } from "./middleware/errorHandler";
 import prisma from "./config/database";
+
+import routes from "./routes"; // ← Router principal (auth, challenges, wallet, chat)
 import subscribeRoutes from "./routes/subscribe.routes";
 import challengePostsRoutes from "./routes/challengePosts.routes";
 
+import { errorHandler } from "./middleware/errorHandler";
+
 const app = express();
 
-// ---------------------------------------
-// 1. SECURITY & CORS — só aqui, 1 vez
-// ---------------------------------------
+// --------------------------------------------------------
+// BODY PARSER
+// --------------------------------------------------------
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// --------------------------------------------------------
+// SECURITY
+// --------------------------------------------------------
 app.use(helmet());
 
+// --------------------------------------------------------
+// CORS
+// --------------------------------------------------------
 let allowedOrigins = env.ALLOWED_ORIGINS.split(",");
+
+// Garantir localhost:8080
 if (!allowedOrigins.includes("http://localhost:8080")) {
   allowedOrigins.push("http://localhost:8080");
 }
 
 app.use(
   cors({
-    origin: allowedOrigins,
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true); // mobile / postman
+      if (allowedOrigins.includes(origin)) callback(null, true);
+      else {
+        console.log("❌ Blocked by CORS:", origin);
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
     credentials: true,
   })
 );
 
-// ---------------------------------------
-// 2. BODY PARSER
-// ---------------------------------------
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// --------------------------------------------------------
+// ROUTES
+// --------------------------------------------------------
 
-// ---------------------------------------
-// 3. LOG REQUESTS (DEV ONLY)
-// ---------------------------------------
-if (env.NODE_ENV === "development") {
-  app.use((req, res, next) => {
-    console.log(`${req.method} ${req.path}`);
-    next();
-  });
-}
-
-// ---------------------------------------
-// 4. ROUTES
-// ---------------------------------------
+// 🔥 ROTAS ESPECÍFICAS
 app.use("/api/challenge-posts", challengePostsRoutes);
 app.use("/api/subscribe", subscribeRoutes);
+
+// 🔥 ROTAS PRINCIPAIS (auth, challenges, wallet, chat)
 app.use("/api", routes);
 
-// ---------------------------------------
-// 5. ERROR HANDLER
-// ---------------------------------------
+// --------------------------------------------------------
+// ERROR HANDLER
+// --------------------------------------------------------
 app.use(errorHandler);
 
-// ---------------------------------------
-// 6. START SERVER
-// ---------------------------------------
+// --------------------------------------------------------
+// SHUTDOWN HANDLING
+// --------------------------------------------------------
+const gracefulShutdown = async () => {
+  console.log("\n🔴 Shutting down gracefully...");
+  try {
+    await prisma.$disconnect();
+    console.log("✅ DB closed");
+    process.exit(0);
+  } catch (error) {
+    console.error("❌ Error on shutdown:", error);
+    process.exit(1);
+  }
+};
+
+process.on("SIGTERM", gracefulShutdown);
+process.on("SIGINT", gracefulShutdown);
+
+// --------------------------------------------------------
+// START SERVER
+// --------------------------------------------------------
 const PORT = parseInt(env.PORT);
 
 const startServer = async () => {
@@ -67,8 +93,7 @@ const startServer = async () => {
 
     app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
-      console.log(`📝 Environment: ${env.NODE_ENV}`);
-      console.log(`🔗 API: http://localhost:${PORT}/api`);
+      console.log(`🔗 API base URL: http://localhost:${PORT}/api`);
     });
   } catch (error) {
     console.error("❌ Failed to start server:", error);

@@ -8,26 +8,30 @@ datasource db {
 }
 
 model User {
-  id                     String                 @id @default(uuid())
-  email                  String                 @unique
-  password               String
-  name                   String
-  age                    Int
-  city                   String
-  avatar_url             String?
-  created_at             DateTime               @default(now())
-  updated_at             DateTime               @updatedAt
-  balance                Float                  @default(0)
-  level                  Int                    @default(1)
-  xp                     Int                    @default(0)
-  total_earned           Float?                 @default(0)
-  total_withdrawn        Float?                 @default(0)
-  achievements           Achievement[]
-  challenge_participants ChallengeParticipant[]
-  posts                  ChallengePost[]
-  createdChallenges      Challenge[]
-  planSubscription       PlanSubscription?
-  transactions           Transaction[]
+  id         String  @id @default(uuid())
+  email      String  @unique
+  password   String
+  name       String
+  age        Int
+  city       String
+  avatar_url String?
+  xp         Int     @default(0)
+  level      Int     @default(1)
+
+  balance         Float @default(0)
+  total_earned    Float @default(0)
+  total_withdrawn Float @default(0)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  challenges        ChallengeParticipant[]
+  createdChallenges Challenge[]
+  transactions      Transaction[]
+  achievements      Achievement[]
+  planSubscription  PlanSubscription?
+  posts             ChallengePost[]
+  chatMessages      ChallengeChat[]
 
   @@map("users")
 }
@@ -45,13 +49,16 @@ model Challenge {
   created_at      DateTime               @default(now())
   coverUrl        String?
   entryPriceCents Int                    @default(0)
-  status          String                 @default("active")
   maxParticipants Int?
   participants    ChallengeParticipant[]
   posts           ChallengePost[]
   createdBy       User                   @relation(fields: [createdById], references: [id])
 
-  @@index([createdById], map: "challenges_createdById_fkey")
+  // 🔥 ADICIONADO — relação inversa com ChallengePost
+  posts ChallengePost[]
+
+  chatMessages ChallengeChat[]
+
   @@map("challenges")
 }
 
@@ -70,14 +77,13 @@ model ChallengeParticipant {
 }
 
 model Transaction {
-  id          String               @id @default(uuid())
-  user_id     String?
-  type        transactions_type
-  description String?              @db.VarChar(255)
-  status      transactions_status? @default(approved)
-  amount      Float
-  created_at  DateTime             @default(now())
-  user        User?                @relation(fields: [user_id], references: [id], onDelete: Restrict, map: "transactions_userId_fkey")
+  id         String   @id @default(uuid())
+  userId     String? // <-- permitir nulo TEMPORARIAMENTE
+  type       String
+  amount     Float
+  created_at DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
 
   @@index([user_id], map: "transactions_userId_fkey")
   @@map("transactions")
@@ -126,24 +132,25 @@ model ChallengePost {
   userId      String
   imageUrl    String
   caption     String?
-  created_at  DateTime  @default(now())
-  challenge   Challenge @relation(fields: [challengeId], references: [id])
-  user        User      @relation(fields: [userId], references: [id])
+  created_at  DateTime @default(now())
+
+  challenge Challenge @relation(fields: [challengeId], references: [id])
+  user      User      @relation(fields: [userId], references: [id])
 
   @@index([challengeId], map: "challenge_posts_challengeId_fkey")
   @@index([userId], map: "challenge_posts_userId_fkey")
   @@map("challenge_posts")
 }
 
-enum transactions_type {
-  deposit
-  withdraw
-  cashback
-  subscription
-}
+model ChallengeChat {
+  id          String   @id @default(uuid())
+  challengeId String
+  userId      String
+  message     String
+  created_at  DateTime @default(now())
 
-enum transactions_status {
-  pending
-  approved
-  rejected
+  challenge Challenge @relation(fields: [challengeId], references: [id])
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@map("challenge_chat")
 }

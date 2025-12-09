@@ -2,18 +2,18 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import { env } from "./config/env";
-import routes from "./routes";
-import { errorHandler } from "./middleware/errorHandler";
 import prisma from "./config/database";
+
+import routes from "./routes"; // ← Router principal (auth, challenges, wallet, chat)
 import subscribeRoutes from "./routes/subscribe.routes";
 import challengePostsRoutes from "./routes/challengePosts.routes";
-import challengeRoutes from "./routes/challenges.routes";
 
+import { errorHandler } from "./middleware/errorHandler";
 
 const app = express();
 
 // --------------------------------------------------------
-// BODY PARSER (sempre antes das rotas)
+// BODY PARSER
 // --------------------------------------------------------
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -28,7 +28,7 @@ app.use(helmet());
 // --------------------------------------------------------
 let allowedOrigins = env.ALLOWED_ORIGINS.split(",");
 
-// Garantir localhost 8080
+// Garantir localhost:8080
 if (!allowedOrigins.includes("http://localhost:8080")) {
   allowedOrigins.push("http://localhost:8080");
 }
@@ -36,7 +36,7 @@ if (!allowedOrigins.includes("http://localhost:8080")) {
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin) return callback(null, true); // mobile/postman
+      if (!origin) return callback(null, true); // mobile / postman
       if (allowedOrigins.includes(origin)) callback(null, true);
       else {
         console.log("❌ Blocked by CORS:", origin);
@@ -51,10 +51,12 @@ app.use(
 // ROUTES
 // --------------------------------------------------------
 
-app.use("/api/challenges", challengeRoutes);
+// 🔥 ROTAS ESPECÍFICAS
 app.use("/api/challenge-posts", challengePostsRoutes);
 app.use("/api/subscribe", subscribeRoutes);
-app.use("/api", routes); // ← AQUI ENTRA /api/auth !!
+
+// 🔥 ROTAS PRINCIPAIS (auth, challenges, wallet, chat)
+app.use("/api", routes);
 
 // --------------------------------------------------------
 // ERROR HANDLER
@@ -62,7 +64,7 @@ app.use("/api", routes); // ← AQUI ENTRA /api/auth !!
 app.use(errorHandler);
 
 // --------------------------------------------------------
-// SHUTDOWN
+// SHUTDOWN HANDLING
 // --------------------------------------------------------
 const gracefulShutdown = async () => {
   console.log("\n🔴 Shutting down gracefully...");

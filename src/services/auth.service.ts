@@ -123,7 +123,7 @@ export class AuthService {
     return {
       ...userWithoutPassword,
       plan,
-      planName: subscription?.plan?.name || null,
+      planName: (subscription as any)?.plan?.name as string | null,
       planExpiresAt: subscription?.endDate || null,
     };
   }

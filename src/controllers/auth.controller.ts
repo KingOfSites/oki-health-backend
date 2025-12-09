@@ -7,13 +7,13 @@ export class AuthController {
     try {
       const result = await AuthService.signup(req.body);
 
-      res.status(201).json({
+      return res.status(201).json({
         success: true,
         message: "Usuário criado com sucesso",
         data: result,
       });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -21,13 +21,13 @@ export class AuthController {
     try {
       const result = await AuthService.signin(req.body);
 
-      res.status(200).json({
+      return res.status(200).json({
         success: true,
         message: "Login realizado com sucesso",
         data: result,
       });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -42,12 +42,12 @@ export class AuthController {
 
       const user = await AuthService.getProfile(req.userId);
 
-      res.status(200).json({
+      return res.status(200).json({
         success: true,
         data: user,
       });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -66,13 +66,13 @@ export class AuthController {
 
       const updated = await AuthService.updateProfile(req.userId, req.body);
 
-      res.status(200).json({
+      return res.status(200).json({
         success: true,
         message: "Perfil atualizado com sucesso",
         data: updated,
       });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 }

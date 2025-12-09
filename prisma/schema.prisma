@@ -8,27 +8,26 @@ datasource db {
 }
 
 model User {
-  id         String   @id @default(uuid())
-  email      String   @unique
-  password   String
-  name       String
-  age        Int
-  city       String
-  avatar_url String?
-  xp         Int      @default(0)
-  level      Int      @default(1)
-  balance    Float    @default(0)
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
-
-  challenges        ChallengeParticipant[]
-  createdChallenges Challenge[]
-  transactions      Transaction[]
-  achievements      Achievement[]
-  planSubscription  PlanSubscription?
-
-  // 🔥 ADICIONADO — relação inversa com ChallengePost
-  posts             ChallengePost[]
+  id                     String                 @id @default(uuid())
+  email                  String                 @unique
+  password               String
+  name                   String
+  age                    Int
+  city                   String
+  avatar_url             String?
+  created_at             DateTime               @default(now())
+  updated_at             DateTime               @updatedAt
+  balance                Float                  @default(0)
+  level                  Int                    @default(1)
+  xp                     Int                    @default(0)
+  total_earned           Float?                 @default(0)
+  total_withdrawn        Float?                 @default(0)
+  achievements           Achievement[]
+  challenge_participants ChallengeParticipant[]
+  posts                  ChallengePost[]
+  createdChallenges      Challenge[]
+  planSubscription       PlanSubscription?
+  transactions           Transaction[]
 
   @@map("users")
 }
@@ -42,43 +41,45 @@ model Challenge {
   endDate         DateTime
   reward          Float                  @default(0)
   location        String?
-  status          String                 @default("active")
+  createdById     String
+  created_at      DateTime               @default(now())
   coverUrl        String?
   entryPriceCents Int                    @default(0)
+  status          String                 @default("active")
+  maxParticipants Int?
   participants    ChallengeParticipant[]
-  createdById     String
-  createdBy       User                   @relation(fields: [createdById], references: [id])
-  created_at      DateTime               @default(now())
-
-  // 🔥 ADICIONADO — relação inversa com ChallengePost
   posts           ChallengePost[]
+  createdBy       User                   @relation(fields: [createdById], references: [id])
 
+  @@index([createdById], map: "challenges_createdById_fkey")
   @@map("challenges")
 }
 
 model ChallengeParticipant {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   userId      String
   challengeId String
-  progress    Float    @default(0)
-  joinedAt    DateTime @default(now())
-
-  user      User      @relation(fields: [userId], references: [id])
-  challenge Challenge @relation(fields: [challengeId], references: [id])
+  progress    Float     @default(0)
+  joinedAt    DateTime  @default(now())
+  challenge   Challenge @relation(fields: [challengeId], references: [id])
+  users       User      @relation(fields: [userId], references: [id])
 
   @@unique([userId, challengeId])
+  @@index([challengeId], map: "challenge_participants_challengeId_fkey")
   @@map("challenge_participants")
 }
 
 model Transaction {
-  id         String   @id @default(uuid())
-  userId     String
-  type       String
-  amount     Float
-  created_at DateTime @default(now())
+  id          String               @id @default(uuid())
+  user_id     String?
+  type        transactions_type
+  description String?              @db.VarChar(255)
+  status      transactions_status? @default(approved)
+  amount      Float
+  created_at  DateTime             @default(now())
+  user        User?                @relation(fields: [user_id], references: [id], onDelete: Restrict, map: "transactions_userId_fkey")
 
-  user User @relation(fields: [userId], references: [id])
-
+  @@index([user_id], map: "transactions_userId_fkey")
   @@map("transactions")
 }
 
@@ -88,19 +89,18 @@ model Achievement {
   title      String
   points     Int      @default(0)
   achievedAt DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id])
 
-  user User @relation(fields: [userId], references: [id])
-
+  @@index([userId], map: "achievements_userId_fkey")
   @@map("achievements")
 }
 
 model Plan {
-  id         String   @id @default(uuid())
-  name       String
-  price      Float
-  benefits   String?
-  created_at DateTime @default(now())
-
+  id            String             @id @default(uuid())
+  name          String
+  price         Float
+  benefits      String?
+  created_at    DateTime           @default(now())
   subscriptions PlanSubscription[]
 
   @@map("plans")
@@ -113,25 +113,37 @@ model PlanSubscription {
   startDate DateTime  @default(now())
   endDate   DateTime?
   active    Boolean   @default(true)
+  plan      Plan      @relation(fields: [planId], references: [id])
+  user      User      @relation(fields: [userId], references: [id])
 
-  user User @relation(fields: [userId], references: [id])
-  plan Plan @relation(fields: [planId], references: [id])
-
+  @@index([planId], map: "plan_subscriptions_planId_fkey")
   @@map("plan_subscriptions")
 }
 
 model ChallengePost {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   challengeId String
   userId      String
   imageUrl    String
   caption     String?
-  created_at  DateTime @default(now())
-
+  created_at  DateTime  @default(now())
   challenge   Challenge @relation(fields: [challengeId], references: [id])
   user        User      @relation(fields: [userId], references: [id])
 
+  @@index([challengeId], map: "challenge_posts_challengeId_fkey")
+  @@index([userId], map: "challenge_posts_userId_fkey")
   @@map("challenge_posts")
 }
 
+enum transactions_type {
+  deposit
+  withdraw
+  cashback
+  subscription
+}
 
+enum transactions_status {
+  pending
+  approved
+  rejected
+}

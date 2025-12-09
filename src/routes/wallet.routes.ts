@@ -4,10 +4,11 @@ import { WalletController } from "../controllers/wallet.controller";
 
 const router = Router();
 
-// GET SALDO
+// rota existente:
 router.get("/", authenticate, WalletController.getWallet);
 
-// sacar futuramente
-// router.post("/withdraw", authenticate, WalletController.withdraw);
+// NOVA ROTA: carteira de tokens por usuário
+router.get("/:userId", authenticate, WalletController.getUserTokenWallet);
 
 export default router;
+

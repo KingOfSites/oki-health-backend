@@ -1,9 +1,6 @@
 import prisma from "../config/database";
 
 export class ChallengesService {
-  static createChallenge(arg0: { createdById: string; title: any; description: any; category: any; startDate: Date; endDate: Date; reward: any; location: any; coverUrl: any; entryPriceCents: any; maxParticipants: any; }) {
-    throw new Error("Method not implemented.");
-  }
   static async listMyChallenges(userId: string) {
     const rows = await prisma.challengeParticipant.findMany({
       where: { userId },
@@ -102,9 +99,7 @@ export class ChallengesService {
       participants_count: countMap.get(c.id) || 0,
     }));
   }
-<<<<<<< HEAD
 
-  // 🟢 A FUNÇÃO QUE FALTAVA — AGORA O CONTROLLER FUNCIONA
   static async createChallenge(data: {
     createdById: string;
     title: string;
@@ -121,21 +116,22 @@ export class ChallengesService {
     return prisma.challenge.create({
       data: {
         ...data,
-        status: "active", // opcional — remova se não existir no schema
+        status: "active",
       },
     });
-=======
+  }
+
   static async deleteChallenge(challengeId: string, userId: string) {
     const challenge = await prisma.challenge.findUnique({
       where: { id: challengeId, createdById: userId },
     });
-    if (!challenge) {
-      return false;
-    }
-    const deleted = await prisma.challenge.delete({
+
+    if (!challenge) return false;
+
+    await prisma.challenge.delete({
       where: { id: challenge.id },
     });
-    return deleted ? true : false;
->>>>>>> 6d29e47c345605e6dd8eec5a75ed134df8f9ee05
+
+    return true;
   }
 }

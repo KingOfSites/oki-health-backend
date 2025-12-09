@@ -1,80 +1,94 @@
 import { Router } from "express";
 import prisma from "../config/database";
+import { PaymentsController } from "../controllers/payments.controller";
 
 const router = Router();
 
 /**
- * 🎯 POST /api/subscribe/confirm
- * Ativa a assinatura do usuário após pagamento
+ * 🔥 1) pagamento com cartão (Mercado Pago)
+ */
+router.post("/card", PaymentsController.payWithCard);
+
+/**
+ * 🔥 2) confirmar assinatura no banco
+ * é chamado DEPOIS que o pagamento foi aprovado
  */
 router.post("/confirm", async (req, res) => {
   try {
     const { userId, planType } = req.body;
 
     if (!userId || !planType) {
-      return res.status(400).json({ message: "Dados inválidos" });
+      return res.status(400).json({ success: false, message: "Dados inválidos" });
     }
 
-    const planName =
-      planType === "annual" ? "Premium Anual" : "Premium Mensal";
+    const planChosen = planType === "annual" ? "Premium Anual" : "Premium Mensal";
 
-    // Busca o plano no banco
     const plan = await prisma.plan.findFirst({
-      where: { name: planName },
+      where: { name: planChosen }
     });
 
     if (!plan) {
-      return res.status(404).json({ message: "Plano não encontrado." });
+      return res.status(404).json({ success: false, message: "Plano não encontrado" });
     }
 
-    // Desativa assinaturas anteriores
+    // 🔥 Desativa assinaturas antigas
     await prisma.planSubscription.updateMany({
       where: { userId },
-      data: { active: false },
+      data: { active: false }
     });
 
-    // Calcula nova data de expiração
-    const now = new Date();
-    const endDate =
-      planType === "annual"
-        ? new Date(now.setFullYear(now.getFullYear() + 1))
-        : new Date(now.setMonth(now.getMonth() + 1));
+    // 🔥 Calcula validade
+    const startDate = new Date();
+    const endDate = new Date();
 
-    // Cria assinatura nova
-    // Upsert da assinatura do usuário
+    if (planType === "annual") {
+      endDate.setFullYear(endDate.getFullYear() + 1);
+    } else {
+      endDate.setMonth(endDate.getMonth() + 1);
+    }
+
+    // 🔥 Sobe ou cria assinatura ativa
     const subscription = await prisma.planSubscription.upsert({
-      where: {
-        userId: userId,
-      },
+      where: { userId },
       update: {
         planId: plan.id,
         active: true,
-        startDate: new Date(),
-        endDate,
+        startDate,
+        endDate
       },
       create: {
         userId,
         planId: plan.id,
         active: true,
-        startDate: new Date(),
-        endDate,
-      },
+        startDate,
+        endDate
+      }
     });
 
+    // 🔥 Registra transação do usuário
+    await prisma.transaction.create({
+      data: {
+        userId,
+        amount: plan.price,
+        type: "subscription",
+        description: `Pagamento da assinatura ${planChosen}`
+      }
+    });
 
     return res.json({
       success: true,
-      subscription,
+      message: "Assinatura confirmada com sucesso!",
+      subscription
     });
+
   } catch (error) {
     console.error("SUBSCRIBE CONFIRM ERROR:", error);
-    return res.status(500).json({ message: "Erro ao confirmar assinatura." });
+    return res.status(500).json({ success: false, message: "Erro ao confirmar assinatura." });
   }
 });
 
 /**
- * 🎯 GET /api/subscribe/status/:userId
- * Retorna se o usuário é premium ou não
+ * 🔥 3) verificar status premium
  */
 router.get("/status/:userId", async (req, res) => {
   const { userId } = req.params;
@@ -84,23 +98,20 @@ router.get("/status/:userId", async (req, res) => {
       where: {
         userId,
         active: true,
-        endDate: { gte: new Date() }, // assinatura válida
+        endDate: { gte: new Date() }
       },
-      include: {
-        plan: true,
-      },
+      include: { plan: true }
     });
 
     return res.json({
       premium: Boolean(subscription),
-      plan: subscription?.plan?.name || null,
-      expiresAt: subscription?.endDate || null,
+      plan: subscription?.plan?.name ?? null,
+      expiresAt: subscription?.endDate ?? null
     });
+
   } catch (error) {
     console.error("SUBSCRIPTION STATUS ERROR:", error);
-    return res
-      .status(500)
-      .json({ error: "Erro ao verificar status da assinatura." });
+    return res.status(500).json({ success: false, message: "Erro ao verificar assinatura." });
   }
 });
 

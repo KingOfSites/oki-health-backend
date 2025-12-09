@@ -1,34 +1,25 @@
-import { Request, Response, NextFunction } from "express";
-import jwt from "jsonwebtoken";
-import { env } from "../config/env";
-import { AppError } from "./errorHandler";
+import { Response, NextFunction } from "express";
+import { JWTUtils } from "../utils/jwt";
+import { AuthRequest } from "./auth";
 
-export interface AuthRequest extends Request {
-  userId?: string;
-}
-
-export const authenticate = async (
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction
-) => {
+export const authenticate = (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const authHeader = req.headers.authorization;
 
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      throw new AppError(401, "Token de autenticação não fornecido");
+      return res.status(401).json({ error: "Token não fornecido" });
     }
 
-    const token = authHeader.substring(7);
+    const token = authHeader.split(" ")[1];
 
-    try {
-      const decoded = jwt.verify(token, env.JWT_SECRET) as { userId: string };
-      req.userId = decoded.userId;
-      next();
-    } catch (error) {
-      throw new AppError(401, "Token inválido ou expirado");
-    }
-  } catch (error) {
-    next(error);
+    const decoded = JWTUtils.verify(token); // { userId: string }
+
+    req.userId = decoded.userId;
+
+    next();
+
+  } catch (err) {
+    console.error("[authenticate] error:", err);
+    return res.status(401).json({ error: "Token inválido" });
   }
 };

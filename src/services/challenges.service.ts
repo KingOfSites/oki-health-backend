@@ -1,44 +1,47 @@
 import prisma from "../config/database";
 
 export class ChallengesService {
+
+  // -----------------------
+  // PARTICIPAR DO DESAFIO
+  // -----------------------
   static async joinChallenge(userId: string, challengeId: string) {
     const existing = await prisma.challengeParticipant.findUnique({
       where: {
         userId_challengeId: { userId, challengeId },
       },
     });
-  
-    if (existing) {
-      return existing;
-    }
-  
+
+    if (existing) return existing;
+
     return prisma.challengeParticipant.create({
       data: { userId, challengeId },
     });
   }
 
+  // --------------------------------
+  // MEUS DESAFIOS (INSCRIÇÕES)
+  // --------------------------------
   static async listMyChallenges(userId: string) {
     const rows = await prisma.challengeParticipant.findMany({
       where: { userId },
-      include: {
-        challenge: true,
-      },
+      include: { challenge: true },
       orderBy: { joinedAt: "desc" },
     });
 
-    const ids = rows.map((r) => r.challengeId);
+    const ids = rows.map(r => r.challengeId);
 
     const counts = await prisma.challengeParticipant.groupBy({
       by: ["challengeId"],
       _count: { challengeId: true },
       where: { challengeId: { in: ids } },
     });
-  
+
     const countMap = new Map(
-      counts.map((c) => [c.challengeId, c._count.challengeId])
+      counts.map(c => [c.challengeId, c._count.challengeId])
     );
-  
-    return rows.map((r) => ({
+
+    return rows.map(r => ({
       id: r.challenge.id,
       title: r.challenge.title,
       description: r.challenge.description,
@@ -51,9 +54,13 @@ export class ChallengesService {
       cover_url: r.challenge.coverUrl || null,
       entry_price_cents: r.challenge.entryPriceCents,
       is_creator: r.challenge.createdById === userId,
+      is_participant: true,
     }));
   }
 
+  // --------------------------------
+  // DESAFIOS CRIADOS POR MIM
+  // --------------------------------
   static async listCreatedChallenges(userId: string) {
     const rows = await prisma.challenge.findMany({
       where: { createdById: userId },
@@ -63,14 +70,14 @@ export class ChallengesService {
     const counts = await prisma.challengeParticipant.groupBy({
       by: ["challengeId"],
       _count: { challengeId: true },
-      where: { challengeId: { in: rows.map((c) => c.id) } },
+      where: { challengeId: { in: rows.map(c => c.id) } },
     });
-  
+
     const countMap = new Map(
-      counts.map((c) => [c.challengeId, c._count.challengeId])
+      counts.map(c => [c.challengeId, c._count.challengeId])
     );
-  
-    return rows.map((c) => ({
+
+    return rows.map(c => ({
       id: c.id,
       title: c.title,
       description: c.description,
@@ -82,9 +89,13 @@ export class ChallengesService {
       cover_url: c.coverUrl,
       entry_price_cents: c.entryPriceCents,
       is_creator: true,
+      is_participant: true,
     }));
   }
 
+  // --------------------------------
+  // DETALHES DO DESAFIO
+  // --------------------------------
   static async getDetails(challengeId: string, userId: string) {
     const challenge = await prisma.challenge.findUnique({
       where: { id: challengeId },
@@ -92,13 +103,11 @@ export class ChallengesService {
         createdBy: true,
         participants: {
           include: {
-            user: true
-          }
+            users: true, // <-- CORRETO
+          },
         },
         posts: {
-          include: {
-            user: true,
-          },
+          include: { user: true },
           orderBy: { created_at: "desc" },
         },
       },
@@ -107,13 +116,10 @@ export class ChallengesService {
     if (!challenge) throw new Error("Desafio não encontrado");
 
     const is_creator = challenge.createdById === userId;
-  
-    // 3. Verificar se usuário está participando
-    const is_participant = challenge.participants.some(
-      (p) => p.userId === userId
-    );
-  
-    // 4. Computar status baseado nas datas
+
+    const is_participant = challenge.participants.some(p => p.userId === userId);
+
+    // STATUS
     const now = new Date();
     let computed_status: "upcoming" | "active" | "completed";
 
@@ -123,12 +129,13 @@ export class ChallengesService {
 
     const participants_count = challenge.participants.length;
 
+    // RANKING
     const ranking = challenge.participants
-      .map((p) => ({
+      .map(p => ({
         user_id: p.users.id,
         user_name: p.users.name,
         percent_progress: Math.min(100, Math.round(p.progress)),
-        photos_submitted: challenge.posts.filter((post) => post.userId === p.userId).length,
+        photos_submitted: challenge.posts.filter(post => post.userId === p.userId).length,
         points: Math.round(p.progress * 2),
       }))
       .sort((a, b) => b.percent_progress - a.percent_progress)
@@ -137,7 +144,8 @@ export class ChallengesService {
         position: index + 1,
       }));
 
-    const posts = challenge.posts.map((post) => ({
+    // POSTS
+    const posts = challenge.posts.map(post => ({
       id: post.id,
       challenge_id: post.challengeId,
       user_id: post.userId,
@@ -171,23 +179,19 @@ export class ChallengesService {
     };
   }
 
-  static async listAllChallenges() {
+  // --------------------------------
+  // LISTA TODOS OS DESAFIOS (HOME / EXPLORAR)
+  // --------------------------------
+  static async listAllChallenges(userId: string) {
     const challenges = await prisma.challenge.findMany({
       where: { status: "active" },
       orderBy: { created_at: "desc" },
+      include: {
+        participants: true,
+      },
     });
 
-    const counts = await prisma.challengeParticipant.groupBy({
-      by: ["challengeId"],
-      _count: { challengeId: true },
-      where: { challengeId: { in: challenges.map((c) => c.id) } },
-    });
-  
-    const countMap = new Map(
-      counts.map((c) => [c.challengeId, c._count.challengeId])
-    );
-  
-    return challenges.map((c) => ({
+    return challenges.map(c => ({
       id: c.id,
       title: c.title,
       description: c.description,
@@ -200,45 +204,33 @@ export class ChallengesService {
       entry_price_cents: c.entryPriceCents,
       status: c.status,
       created_at: c.created_at,
-      participants_count: countMap.get(c.id) || 0,
+      participants_count: c.participants.length,
+
+      // 🔥 AQUI É A CORREÇÃO QUE RESOLVE O SEU PROBLEMA
+      is_participant: c.participants.some(p => p.userId === userId),
     }));
   }
-  
 
-  static async createChallenge(data: {
-    createdById: string;
-    title: string;
-    description: string;
-    category: string;
-    startDate: Date;
-    endDate: Date;
-    reward?: number;
-    location?: string | null;
-    coverUrl?: string | null;
-    entryPriceCents?: number;
-    maxParticipants?: number | null;
-  }) {
+  // --------------------------------
+  // CRIAR DESAFIO
+  // --------------------------------
+  static async createChallenge(data: any) {
     return prisma.challenge.create({
-      data: {
-        ...data,
-        status: "active",
-      },
+      data: { ...data, status: "active" },
     });
   }
 
-  // ⚠️ AQUI ESTAVA O PROBLEMA
+  // --------------------------------
+  // DELETAR DESAFIO
+  // --------------------------------
   static async deleteChallenge(challengeId: string, userId: string) {
     const challenge = await prisma.challenge.findUnique({
       where: { id: challengeId, createdById: userId },
     });
 
-    if (!challenge) {
-      return false;
-    }
+    if (!challenge) return false;
 
-    const deleted = await prisma.challenge.delete({
-      where: { id: challenge.id },
-    });
+    await prisma.challenge.delete({ where: { id: challenge.id } });
 
     return true;
   }

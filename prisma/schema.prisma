@@ -36,68 +36,63 @@ model User {
   @@map("users")
 }
 
-model Challenge {
-  id              String   @id @default(uuid())
-  title           String
-  description     String
-  category        String
-  startDate       DateTime
-  endDate         DateTime
-  reward          Float    @default(0)
-  location        String?
-  createdById     String
-  created_at      DateTime @default(now())
-  coverUrl        String?
-  entryPriceCents Int      @default(0)
-  maxParticipants Int?
-  status          String   @default("active")
+  model Challenge {
+    id              String                 @id @default(uuid())
+    title           String
+    description     String
+    category        String
+    startDate       DateTime
+    endDate         DateTime
+    reward          Float                  @default(0)
+    location        String?
+    createdById     String
+    created_at      DateTime               @default(now())
+    coverUrl        String?
+    entryPriceCents Int                    @default(0)
+    maxParticipants Int?
+    participants    ChallengeParticipant[]
+    posts           ChallengePost[]
+    createdBy       User                   @relation(fields: [createdById], references: [id])
 
-  participants ChallengeParticipant[]
-  posts        ChallengePost[] // 🔥 corrigido (somente 1 vez)
-  chatMessages ChallengeChat[]
-
-  createdBy User @relation(fields: [createdById], references: [id])
+    chatMessages ChallengeChat[]
 
   @@map("challenges")
 }
 
-model ChallengeParticipant {
-  id          String   @id @default(uuid())
-  userId      String
-  challengeId String
-  progress    Float    @default(0)
-  joinedAt    DateTime @default(now())
-
-  challenge Challenge @relation(fields: [challengeId], references: [id])
-  users     User      @relation(fields: [userId], references: [id])
+  model ChallengeParticipant {
+    id          String    @id @default(uuid())
+    userId      String
+    challengeId String
+    progress    Float     @default(0)
+    joinedAt    DateTime  @default(now())
+    challenge   Challenge @relation(fields: [challengeId], references: [id])
+    users       User      @relation(fields: [userId], references: [id])
 
   @@unique([userId, challengeId])
   @@index([challengeId], map: "challenge_participants_challengeId_fkey")
   @@map("challenge_participants")
 }
 
-model Transaction {
-  id          String   @id @default(uuid())
-  userId      String?
-  type        String
-  amount      Float
-  description String?
-  created_at  DateTime @default(now())
+  model Transaction {
+    id         String   @id @default(uuid())
+    userId     String?
+    type       String
+    amount     Float
+    created_at DateTime @default(now())
 
   user User? @relation(fields: [userId], references: [id])
 
-  @@index([userId], map: "transactions_userId_fkey") // 🔥 corrigido
-  @@map("transactions")
-}
+    @@index([user_id], map: "transactions_userId_fkey")
+    @@map("transactions")
+  }
 
-model Achievement {
-  id         String   @id @default(uuid())
-  userId     String
-  title      String
-  points     Int      @default(0)
-  achievedAt DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id])
+  model Achievement {
+    id         String   @id @default(uuid())
+    userId     String
+    title      String
+    points     Int      @default(0)
+    achievedAt DateTime @default(now())
+    user       User     @relation(fields: [userId], references: [id])
 
   @@index([userId], map: "achievements_userId_fkey")
   @@map("achievements")
@@ -114,16 +109,15 @@ model Plan {
   @@map("plans")
 }
 
-model PlanSubscription {
-  id        String    @id @default(uuid())
-  userId    String    @unique
-  planId    String
-  startDate DateTime  @default(now())
-  endDate   DateTime?
-  active    Boolean   @default(true)
-
-  plan Plan @relation(fields: [planId], references: [id])
-  user User @relation(fields: [userId], references: [id])
+  model PlanSubscription {
+    id        String    @id @default(uuid())
+    userId    String    @unique
+    planId    String
+    startDate DateTime  @default(now())
+    endDate   DateTime?
+    active    Boolean   @default(true)
+    plan      Plan      @relation(fields: [planId], references: [id])
+    user      User      @relation(fields: [userId], references: [id])
 
   @@index([planId], map: "plan_subscriptions_planId_fkey")
   @@map("plan_subscriptions")

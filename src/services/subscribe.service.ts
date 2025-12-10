@@ -3,28 +3,35 @@ import prisma from "../config/database";
 export class SubscribeService {
   static async activatePremium(userId: string, planType: "monthly" | "annual") {
     const expires = new Date();
-    expires.setMonth(expires.getMonth() + (planType === "annual" ? 12 : 1));
 
-    await prisma.user.update({
-      where: { id: userId },
-      data: {
-        plan: "PREMIUM",
-      },
-    });
+    expires.setMonth(
+      expires.getMonth() + (planType === "annual" ? 12 : 1)
+    );
+
+    // ❌ Removido: campo "plan" não existe no Prisma
+    // await prisma.user.update({ ... })
+
+    // Encontrar plano correto:
+    const planName = planType === "annual" ? "Premium Anual" : "Premium Mensal";
+    const plan = await prisma.plan.findFirst({ where: { name: planName } });
+
+    if (!plan) throw new Error("Plano não encontrado");
 
     await prisma.planSubscription.upsert({
       where: { userId },
       update: {
-        planId: "premium",
+        planId: plan.id,
         endDate: expires,
-        active: true
+        active: true,
       },
       create: {
         userId,
-        planId: "premium",
+        planId: plan.id,
         endDate: expires,
-        active: true
-      }
+        active: true,
+      },
     });
+
+    return true;
   }
 }

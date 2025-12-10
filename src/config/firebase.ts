@@ -42,6 +42,12 @@ if (!admin.apps.length) {
 }
 
 // -------------------------------
-// 🔥 4. Exportar Storage
+// 🔥 4. Exportar Storage (dois nomes)
 // -------------------------------
-export const firebaseStorage = admin.storage().bucket();
+const bucket = admin.storage().bucket();
+
+// nome novo (recomendado)
+export const firebaseStorage = bucket;
+
+// nome antigo que seu código já usa em alguns lugares
+export const storage = bucket;

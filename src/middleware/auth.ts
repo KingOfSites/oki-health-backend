@@ -15,6 +15,7 @@ export const authenticate = async (
   try {
     const authHeader = req.headers.authorization;
 
+    // Verifica se o header existe e está no formato correto
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return res.status(401).json({ error: "Token não fornecido" });
     }
@@ -25,13 +26,19 @@ export const authenticate = async (
       throw new Error("JWT_SECRET está ausente no arquivo .env");
     }
 
-    // 👉 Agora existe apenas UMA variável decoded
-    const decoded = jwt.verify(token, env.JWT_SECRET) as JwtPayload;
+    let decoded: JwtPayload;
+
+    try {
+      decoded = jwt.verify(token, env.JWT_SECRET as string) as JwtPayload;
+    } catch (err) {
+      throw new AppError(401, "Token inválido ou expirado");
+    }
 
     if (!decoded.userId) {
       throw new AppError(401, "Token não contém userId");
     }
 
+    // Anexa o ID do usuário à requisição
     req.userId = decoded.userId;
 
     return next();
@@ -39,3 +46,8 @@ export const authenticate = async (
     return next(error);
   }
 };
+
+
+
+
+

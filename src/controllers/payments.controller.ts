@@ -1,13 +1,16 @@
 import { Request, Response } from "express";
-import { Payment } from "mercadopago";
-import { mpClient } from "../lib/mercadopago";
+import { MercadoPagoConfig, Payment } from "mercadopago";
+
+const mpClient = new MercadoPagoConfig({
+  accessToken: process.env.MP_ACCESS_TOKEN!,
+});
 
 export class PaymentsController {
   static async payWithCard(req: Request, res: Response) {
     try {
-      const { token, amount, cardholderName, email } = req.body;
+      const { token, amount, cardholderName, email, cpf } = req.body;
 
-      if (!token || !amount || !email) {
+      if (!token || !amount || !email || !cpf) {
         return res.status(400).json({
           success: false,
           message: "Dados incompletos para pagamento.",
@@ -22,19 +25,19 @@ export class PaymentsController {
           description: "Assinatura Oki Premium",
           token,
 
-          // 👇 Mercado Pago identifica automaticamente o método (visa/master/etc)
-          payment_method_id: "credit_card",
+          // ⚠️ NÃO DEFINIR payment_method_id MANUALMENTE
+          // O Mercado Pago identifica sozinho pelo BIN do cartão
 
           payer: {
             email,
             first_name: cardholderName,
             identification: {
               type: "CPF",
-              number: "12345678909",
+              number: cpf, // AGORA VEM DO CLIENTE
             },
           },
 
-          installments: 1, // pagamento à vista (padrão)
+          installments: 1,
         },
       });
 

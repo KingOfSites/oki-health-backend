@@ -4,22 +4,23 @@ import { mpClient } from "../lib/mercadopago";
 import { Payment } from "mercadopago";
 
 export class SubscribeController {
+
+  // ------------------------------ CARTÃO ------------------------------
   static async subscribeWithCard(req: Request, res: Response) {
     try {
-      const userId = (req as any).userId; // <-- garante que nunca dá undefined
+      const userId = (req as any).userId;
 
       const {
         token,
         planType,
         email,
         cardholderName,
+        transaction_amount,
+        installments,
+        description,
       } = req.body;
 
-      console.log("REQ.BODY RECEBIDO:", req.body);
-      console.log("USER ID EXTRAÍDO:", userId);
-
-      // ❌ userId NÃO entra mais na validação porque pode vir undefined
-      if (!token || !planType || !email || !cardholderName) {
+      if (!token || !transaction_amount || !email || !planType) {
         return res.status(400).json({
           success: false,
           message: "Dados incompletos para pagamento.",
@@ -33,9 +34,7 @@ export class SubscribeController {
         });
       }
 
-      // Seleção do plano
-      const planName =
-        planType === "annual" ? "Premium Anual" : "Premium Mensal";
+      const planName = planType === "annual" ? "Premium Anual" : "Premium Mensal";
 
       const plan = await prisma.plan.findFirst({
         where: { name: planName },
@@ -50,48 +49,44 @@ export class SubscribeController {
 
       const payment = new Payment(mpClient);
 
-      // Pagamento sem CPF — apenas email e nome
-      const result: any = await payment.create({
+      const mpResponse: any = await payment.create({
         body: {
           token,
-          transaction_amount: plan.price,
-          installments: 1,
-          description: `Assinatura ${planName}`,
+          transaction_amount,
+          installments,
+          description,
           payer: {
             email,
             first_name: cardholderName,
+            identification: {
+              type: "CPF",
+              number: "11111111111", // CPF de teste
+            },
           },
         },
       });
 
-      console.log("MP RESULT RECEBIDO:", result);
-
-      if (
-        result.status !== "approved" &&
-        result.status !== "in_process" &&
-        result.status !== "pending"
-      ) {
+      if (!["approved", "pending", "in_process"].includes(mpResponse.status)) {
         return res.status(400).json({
           success: false,
           message: "Falha no pagamento.",
-          error: result,
+          error: mpResponse,
         });
       }
 
-      // Desativa assinaturas ativas anteriores
+      // Desativa assinatura antiga
       await prisma.planSubscription.updateMany({
         where: { userId },
         data: { active: false },
       });
 
-      // Calcula nova validade
       const now = new Date();
       const endDate =
         planType === "annual"
           ? new Date(now.setFullYear(now.getFullYear() + 1))
           : new Date(now.setMonth(now.getMonth() + 1));
 
-      // Cria assinatura ou atualiza se já existir
+      // Cria assinatura
       const subscription = await prisma.planSubscription.upsert({
         where: { userId },
         update: {
@@ -109,13 +104,13 @@ export class SubscribeController {
         },
       });
 
-      // Cria registro de transação
+      // Registra transação
       await prisma.transaction.create({
         data: {
-          user_id: userId,
           amount: plan.price,
           type: "subscription",
-          description: `Pagamento da assinatura ${planName}`,
+          description: `Plano Premium ${planType}`,
+          user: { connect: { id: userId } },
         },
       });
 
@@ -126,11 +121,100 @@ export class SubscribeController {
       });
 
     } catch (error: any) {
-      console.error("SUBSCRIBE ERROR:", error);
       return res.status(500).json({
         success: false,
-        message: "Erro ao processar assinatura",
-        details: error?.message,
+        message: "Erro ao processar assinatura.",
+        details: error.message,
+      });
+    }
+  }
+
+  // ------------------------------ PIX ------------------------------
+  static async subscribeWithPix(req: Request, res: Response) {
+    try {
+      const userId = (req as any).userId;
+      const { planType, cpf } = req.body;
+
+      if (!userId || !planType || !cpf) {
+        return res.status(400).json({
+          success: false,
+          message: "Dados inválidos para gerar PIX.",
+        });
+      }
+
+      const planName = planType === "annual" ? "Premium Anual" : "Premium Mensal";
+
+      const plan = await prisma.plan.findFirst({
+        where: { name: planName },
+      });
+
+      if (!plan) {
+        return res.status(404).json({
+          success: false,
+          message: "Plano não encontrado.",
+        });
+      }
+
+      const payment = new Payment(mpClient);
+
+      const mpPix: any = await payment.create({
+        body: {
+          transaction_amount: plan.price,
+          description: `Assinatura ${planName}`,
+          payment_method_id: "pix",
+          payer: {
+            email: "cliente@example.com",
+            first_name: "Cliente",
+            identification: {
+              type: "CPF",
+              number: cpf.replace(/\D/g, ""),
+            },
+          },
+        },
+      });
+
+      console.log("PIX RESPONSE:", mpPix);
+
+      return res.json({
+        success: true,
+        qrCode: mpPix.point_of_interaction?.transaction_data?.qr_code,
+        qrCodeBase64:
+          mpPix.point_of_interaction?.transaction_data?.qr_code_base64,
+        expiration: mpPix.date_of_expiration,
+      });
+    } catch (error: any) {
+      return res.status(500).json({
+        success: false,
+        message: "Erro ao gerar PIX.",
+        details: error.message,
+      });
+    }
+  }
+
+  // ------------------------------ STATUS PREMIUM ------------------------------
+  static async getStatus(req: Request, res: Response) {
+    try {
+      const { userId } = req.params;
+
+      const subscription = await prisma.planSubscription.findFirst({
+        where: {
+          userId,
+          active: true,
+          endDate: { gte: new Date() }
+        },
+        include: { plan: true }
+      });
+
+      return res.json({
+        premium: Boolean(subscription),
+        plan: subscription?.plan?.name ?? null,
+        expiresAt: subscription?.endDate ?? null
+      });
+
+    } catch (error) {
+      return res.status(500).json({
+        success: false,
+        message: "Erro ao verificar assinatura."
       });
     }
   }

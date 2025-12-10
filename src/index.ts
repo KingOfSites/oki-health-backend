@@ -1,8 +1,17 @@
+console.log("🔥 subscribeRoutes:", subscribeRoutes);
+console.log("🔥 authenticate:", authenticate);
+
+
+
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import { env } from "./config/env";
 import prisma from "./config/database";
+import { authenticate } from "./middleware/auth";
+
+
+
 
 import routes from "./routes"; // ← Router principal (auth, challenges, wallet, chat)
 import subscribeRoutes from "./routes/subscribe.routes";
@@ -54,6 +63,8 @@ app.use(
 // 🔥 ROTAS ESPECÍFICAS
 app.use("/api/challenge-posts", challengePostsRoutes);
 app.use("/api/subscribe", subscribeRoutes);
+
+
 
 // 🔥 ROTAS PRINCIPAIS (auth, challenges, wallet, chat)
 app.use("/api", routes);

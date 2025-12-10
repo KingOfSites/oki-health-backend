@@ -37,27 +37,27 @@ model User {
 }
 
 model Challenge {
-  id              String                 @id @default(uuid())
+  id              String   @id @default(uuid())
   title           String
   description     String
   category        String
   startDate       DateTime
   endDate         DateTime
-  reward          Float                  @default(0)
+  reward          Float      @default(0)
   location        String?
   createdById     String
-  created_at      DateTime               @default(now())
+  created_at      DateTime   @default(now())
   coverUrl        String?
-  entryPriceCents Int                    @default(0)
+  entryPriceCents Int        @default(0)
   maxParticipants Int?
+
+  /// 🔥 Campo existente no banco — restaurado
+  status          String     @default("active")
+
   participants    ChallengeParticipant[]
   posts           ChallengePost[]
-  createdBy       User                   @relation(fields: [createdById], references: [id])
-
-  // 🔥 ADICIONADO — relação inversa com ChallengePost
-  posts ChallengePost[]
-
-  chatMessages ChallengeChat[]
+  createdBy       User       @relation(fields: [createdById], references: [id])
+  chatMessages    ChallengeChat[]
 
   @@map("challenges")
 }
@@ -68,6 +68,7 @@ model ChallengeParticipant {
   challengeId String
   progress    Float     @default(0)
   joinedAt    DateTime  @default(now())
+
   challenge   Challenge @relation(fields: [challengeId], references: [id])
   users       User      @relation(fields: [userId], references: [id])
 
@@ -78,16 +79,18 @@ model ChallengeParticipant {
 
 model Transaction {
   id         String   @id @default(uuid())
-  userId     String? // <-- permitir nulo TEMPORARIAMENTE
+  userId     String?
   type       String
   amount     Float
+  description String?         // 👈 ADICIONE ESTE CAMPO
   created_at DateTime @default(now())
 
   user User? @relation(fields: [userId], references: [id])
 
-  @@index([user_id], map: "transactions_userId_fkey")
+  @@index([userId], map: "transactions_userId_fkey")
   @@map("transactions")
 }
+
 
 model Achievement {
   id         String   @id @default(uuid())
@@ -95,7 +98,8 @@ model Achievement {
   title      String
   points     Int      @default(0)
   achievedAt DateTime @default(now())
-  user       User     @relation(fields: [userId], references: [id])
+
+  user User  @relation(fields: [userId], references: [id])
 
   @@index([userId], map: "achievements_userId_fkey")
   @@map("achievements")
@@ -119,6 +123,7 @@ model PlanSubscription {
   startDate DateTime  @default(now())
   endDate   DateTime?
   active    Boolean   @default(true)
+
   plan      Plan      @relation(fields: [planId], references: [id])
   user      User      @relation(fields: [userId], references: [id])
 

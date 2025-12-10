@@ -9,36 +9,31 @@ export interface AuthRequest extends Request {
 
 export const authenticate = async (
   req: AuthRequest,
-  _res: Response,
+  res: Response,
   next: NextFunction
 ) => {
   try {
     const authHeader = req.headers.authorization;
 
+    // Verifica se o header existe e está no formato correto
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return res.status(401).json({ error: "Token não fornecido" });
     }
 
     const token = authHeader.split(" ")[1];
 
-    const decoded = JWTUtils.verify(token); // { userId: string }
-
     if (!env.JWT_SECRET) {
       throw new Error("JWT_SECRET está ausente no arquivo .env");
     }
 
-    let decoded: JwtPayload;
+    // Decodifica o token
+    const decoded = jwt.verify(token, env.JWT_SECRET) as JwtPayload;
 
-    try {
-      decoded = jwt.verify(token, env.JWT_SECRET as string) as JwtPayload;
-    } catch (err) {
-      throw new AppError(401, "Token inválido ou expirado");
+    if (!decoded || !decoded.userId) {
+      throw new AppError(401, "Token inválido ou não contém userId");
     }
 
-    if (!decoded.userId) {
-      throw new AppError(401, "Token não contém userId");
-    }
-
+    // Anexa o ID do usuário à requisição
     req.userId = decoded.userId;
 
     return next();
@@ -46,3 +41,8 @@ export const authenticate = async (
     return next(error);
   }
 };
+
+
+
+
+

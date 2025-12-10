@@ -26,11 +26,16 @@ export const authenticate = async (
       throw new Error("JWT_SECRET está ausente no arquivo .env");
     }
 
-    // Decodifica o token
-    const decoded = jwt.verify(token, env.JWT_SECRET) as JwtPayload;
+    let decoded: JwtPayload;
 
-    if (!decoded || !decoded.userId) {
-      throw new AppError(401, "Token inválido ou não contém userId");
+    try {
+      decoded = jwt.verify(token, env.JWT_SECRET as string) as JwtPayload;
+    } catch (err) {
+      throw new AppError(401, "Token inválido ou expirado");
+    }
+
+    if (!decoded.userId) {
+      throw new AppError(401, "Token não contém userId");
     }
 
     // Anexa o ID do usuário à requisição

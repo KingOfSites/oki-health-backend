@@ -1,16 +1,17 @@
 import prisma from "../config/database";
 
 export class ChallengesService {
-
   static async joinChallenge(userId: string, challengeId: string) {
     const existing = await prisma.challengeParticipant.findUnique({
       where: {
         userId_challengeId: { userId, challengeId },
       },
     });
-
-    if (existing) return existing;
-
+  
+    if (existing) {
+      return existing;
+    }
+  
     return prisma.challengeParticipant.create({
       data: { userId, challengeId },
     });
@@ -32,9 +33,11 @@ export class ChallengesService {
       _count: { challengeId: true },
       where: { challengeId: { in: ids } },
     });
-
-    const countMap = new Map(counts.map((c) => [c.challengeId, c._count.challengeId]));
-
+  
+    const countMap = new Map(
+      counts.map((c) => [c.challengeId, c._count.challengeId])
+    );
+  
     return rows.map((r) => ({
       id: r.challenge.id,
       title: r.challenge.title,
@@ -62,9 +65,11 @@ export class ChallengesService {
       _count: { challengeId: true },
       where: { challengeId: { in: rows.map((c) => c.id) } },
     });
-
-    const countMap = new Map(counts.map((c) => [c.challengeId, c._count.challengeId]));
-
+  
+    const countMap = new Map(
+      counts.map((c) => [c.challengeId, c._count.challengeId])
+    );
+  
     return rows.map((c) => ({
       id: c.id,
       title: c.title,
@@ -87,8 +92,8 @@ export class ChallengesService {
         createdBy: true,
         participants: {
           include: {
-            users: true, // CORRIGIDO
-          },
+            user: true
+          }
         },
         posts: {
           include: {
@@ -102,9 +107,13 @@ export class ChallengesService {
     if (!challenge) throw new Error("Desafio não encontrado");
 
     const is_creator = challenge.createdById === userId;
-
-    const is_participant = challenge.participants.some((p) => p.userId === userId);
-
+  
+    // 3. Verificar se usuário está participando
+    const is_participant = challenge.participants.some(
+      (p) => p.userId === userId
+    );
+  
+    // 4. Computar status baseado nas datas
     const now = new Date();
     let computed_status: "upcoming" | "active" | "completed";
 
@@ -173,9 +182,11 @@ export class ChallengesService {
       _count: { challengeId: true },
       where: { challengeId: { in: challenges.map((c) => c.id) } },
     });
-
-    const countMap = new Map(counts.map((c) => [c.challengeId, c._count.challengeId]));
-
+  
+    const countMap = new Map(
+      counts.map((c) => [c.challengeId, c._count.challengeId])
+    );
+  
     return challenges.map((c) => ({
       id: c.id,
       title: c.title,
@@ -192,8 +203,21 @@ export class ChallengesService {
       participants_count: countMap.get(c.id) || 0,
     }));
   }
+  
 
-  static async createChallenge(data: any) {
+  static async createChallenge(data: {
+    createdById: string;
+    title: string;
+    description: string;
+    category: string;
+    startDate: Date;
+    endDate: Date;
+    reward?: number;
+    location?: string | null;
+    coverUrl?: string | null;
+    entryPriceCents?: number;
+    maxParticipants?: number | null;
+  }) {
     return prisma.challenge.create({
       data: {
         ...data,
@@ -202,14 +226,19 @@ export class ChallengesService {
     });
   }
 
+  // ⚠️ AQUI ESTAVA O PROBLEMA
   static async deleteChallenge(challengeId: string, userId: string) {
-    const challenge = await prisma.challenge.findFirst({
+    const challenge = await prisma.challenge.findUnique({
       where: { id: challengeId, createdById: userId },
     });
 
-    if (!challenge) return false;
+    if (!challenge) {
+      return false;
+    }
 
-    await prisma.challenge.delete({ where: { id: challengeId } });
+    const deleted = await prisma.challenge.delete({
+      where: { id: challenge.id },
+    });
 
     return true;
   }

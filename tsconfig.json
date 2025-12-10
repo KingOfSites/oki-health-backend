@@ -20,6 +20,6 @@
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "../oki-health/src/services/gamificationApi.ts"],
   "exclude": ["node_modules", "dist"]
 }

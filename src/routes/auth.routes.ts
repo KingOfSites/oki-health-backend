@@ -1,7 +1,16 @@
+console.log("signupSchema:", signupSchema);
+console.log("signinSchema:", signinSchema);
+console.log("updateProfileSchema:", updateProfileSchema);
+
+
+
+
+
 import { Router } from "express";
 import { AuthController } from "../controllers/auth.controller";
 import { validate } from "../middleware/validation";
 import { authenticate } from "../middleware/auth";
+
 import {
   signupSchema,
   signinSchema,
@@ -12,7 +21,7 @@ const router = Router();
 
 /**
  * @route   POST /api/auth/signup
- * @desc    Register a new user
+ * @desc    Register a new user (com novos campos nutricionais)
  * @access  Public
  */
 router.post("/signup", validate(signupSchema), AuthController.signup);
@@ -26,14 +35,14 @@ router.post("/signin", validate(signinSchema), AuthController.signin);
 
 /**
  * @route   GET /api/auth/profile
- * @desc    Get user profile
+ * @desc    Get full user profile
  * @access  Private
  */
 router.get("/profile", authenticate, AuthController.getProfile);
 
 /**
  * @route   PUT /api/auth/profile
- * @desc    Update user profile
+ * @desc    Update user profile (alteração de peso, sexo, idade, etc.)
  * @access  Private
  */
 router.put(

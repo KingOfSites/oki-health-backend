@@ -22,6 +22,12 @@ model User {
   total_earned    Float @default(0)
   total_withdrawn Float @default(0)
 
+  // 🔥 CAMPOS NUTRICIONAIS (NOVOS)
+  sexo       String?   // "M" ou "F"
+  peso       Float?    // kg
+  altura     Int?      // cm
+  atividade  String?   // sedentario / leve / moderado / intenso / muito_intenso
+
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
@@ -36,40 +42,42 @@ model User {
   @@map("users")
 }
 
+
 model Challenge {
-  id              String                 @id @default(uuid())
+  id              String   @id @default(uuid())
   title           String
   description     String
   category        String
   startDate       DateTime
   endDate         DateTime
-  reward          Float                  @default(0)
+  reward          Float    @default(0)
   location        String?
   createdById     String
-  created_at      DateTime               @default(now())
+  created_at      DateTime @default(now())
   coverUrl        String?
-  entryPriceCents Int                    @default(0)
+  entryPriceCents Int      @default(0)
   maxParticipants Int?
-  participants    ChallengeParticipant[]
-  posts           ChallengePost[]
-  createdBy       User                   @relation(fields: [createdById], references: [id])
 
-  // 🔥 ADICIONADO — relação inversa com ChallengePost
-  posts ChallengePost[]
+  status String @default("active")
 
+  participants ChallengeParticipant[]
+  posts        ChallengePost[]
+  createdBy    User                   @relation(fields: [createdById], references: [id])
   chatMessages ChallengeChat[]
+  transactions Transaction[]
 
   @@map("challenges")
 }
 
 model ChallengeParticipant {
-  id          String    @id @default(uuid())
+  id          String   @id @default(uuid())
   userId      String
   challengeId String
-  progress    Float     @default(0)
-  joinedAt    DateTime  @default(now())
-  challenge   Challenge @relation(fields: [challengeId], references: [id])
-  users       User      @relation(fields: [userId], references: [id])
+  progress    Float    @default(0)
+  joinedAt    DateTime @default(now())
+
+  challenge Challenge @relation(fields: [challengeId], references: [id])
+  user      User      @relation(fields: [userId], references: [id])
 
   @@unique([userId, challengeId])
   @@index([challengeId], map: "challenge_participants_challengeId_fkey")
@@ -77,15 +85,24 @@ model ChallengeParticipant {
 }
 
 model Transaction {
-  id         String   @id @default(uuid())
-  userId     String? // <-- permitir nulo TEMPORARIAMENTE
-  type       String
-  amount     Float
+  id         String   @id @default(cuid())
   created_at DateTime @default(now())
 
-  user User? @relation(fields: [userId], references: [id])
+  // relation with User
+  user   User?   @relation(fields: [userId], references: [id])
+  userId String?
 
-  @@index([user_id], map: "transactions_userId_fkey")
+  // relation with Challenge
+  challenge   Challenge? @relation(fields: [challengeId], references: [id])
+  challengeId String?
+
+  description String?
+  type        String
+  amount      Float
+
+  mpPaymentId String? @unique
+  status      String  @default("pending")
+
   @@map("transactions")
 }
 
@@ -95,7 +112,8 @@ model Achievement {
   title      String
   points     Int      @default(0)
   achievedAt DateTime @default(now())
-  user       User     @relation(fields: [userId], references: [id])
+
+  user User @relation(fields: [userId], references: [id])
 
   @@index([userId], map: "achievements_userId_fkey")
   @@map("achievements")
@@ -119,8 +137,9 @@ model PlanSubscription {
   startDate DateTime  @default(now())
   endDate   DateTime?
   active    Boolean   @default(true)
-  plan      Plan      @relation(fields: [planId], references: [id])
-  user      User      @relation(fields: [userId], references: [id])
+
+  plan Plan @relation(fields: [planId], references: [id])
+  user User @relation(fields: [userId], references: [id])
 
   @@index([planId], map: "plan_subscriptions_planId_fkey")
   @@map("plan_subscriptions")
@@ -152,5 +171,5 @@ model ChallengeChat {
   challenge Challenge @relation(fields: [challengeId], references: [id])
   user      User      @relation(fields: [userId], references: [id])
 
-    @@map("challenge_chat")
-  }
+  @@map("challenge_chat")
+}

@@ -1,15 +1,28 @@
-import { User } from "@prisma/client";
 import prisma from "../config/database";
 import { PasswordUtils } from "../utils/password";
 import { JWTUtils } from "../utils/jwt";
 import { AppError } from "../middleware/errorHandler";
 
+// ----------------------------------------------------
+// DTOs
+// ----------------------------------------------------
 export interface SignupData {
   email: string;
   password: string;
   name: string;
   age: number;
   city: string;
+
+  // 🔥 nutricionais
+  sexo: "M" | "F";
+  pesoKg: number;
+  alturaCm: number;
+  atividade:
+    | "sedentario"
+    | "leve"
+    | "moderado"
+    | "intenso"
+    | "muito_intenso";
 }
 
 export interface SigninData {
@@ -18,13 +31,33 @@ export interface SigninData {
 }
 
 export interface AuthResponse {
-  user: Omit<User, "password">;
+  user: {
+    id: string;
+    email: string;
+    name: string;
+    age: number;
+    city: string;
+
+    sexo: "M" | "F" | null;
+    peso: number | null;
+    altura: number | null;
+    atividade: string | null;
+
+    xp: number;
+    level: number;
+    avatar_url?: string | null;
+
+    created_at: Date;
+    updated_at: Date;
+  };
   token: string;
 }
 
 export class AuthService {
+  // ----------------------------------------------------
+  // SIGNUP
+  // ----------------------------------------------------
   static async signup(data: SignupData): Promise<AuthResponse> {
-    // Check if user already exists
     const existingUser = await prisma.user.findUnique({
       where: { email: data.email },
     });
@@ -33,16 +66,13 @@ export class AuthService {
       throw new AppError(409, "Email já cadastrado");
     }
 
-    // Validate password
     const passwordValidation = PasswordUtils.validate(data.password);
     if (!passwordValidation.valid) {
       throw new AppError(400, passwordValidation.errors.join(", "));
     }
 
-    // Hash password
     const hashedPassword = await PasswordUtils.hash(data.password);
 
-    // Create user
     const user = await prisma.user.create({
       data: {
         email: data.email,
@@ -50,23 +80,45 @@ export class AuthService {
         name: data.name,
         age: data.age,
         city: data.city,
+
+        // 🔥 nutricionais
+        sexo: data.sexo,
+        peso: data.pesoKg,
+        altura: data.alturaCm,
+        atividade: data.atividade,
       },
     });
 
-    // Generate token
     const token = JWTUtils.generate(user.id);
 
-    // Remove password from response
-    const { password: _, ...userWithoutPassword } = user;
-
     return {
-      user: userWithoutPassword,
       token,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        age: user.age,
+        city: user.city,
+
+        sexo: user.sexo ?? null,
+        peso: user.peso ?? null,
+        altura: user.altura ?? null,
+        atividade: user.atividade ?? null,
+
+        xp: user.xp,
+        level: user.level,
+        avatar_url: user.avatar_url ?? null,
+
+        created_at: user.created_at,
+        updated_at: user.updated_at,
+      },
     };
   }
 
+  // ----------------------------------------------------
+  // SIGNIN
+  // ----------------------------------------------------
   static async signin(data: SigninData): Promise<AuthResponse> {
-    // Find user by email
     const user = await prisma.user.findUnique({
       where: { email: data.email },
     });
@@ -75,7 +127,6 @@ export class AuthService {
       throw new AppError(401, "Email ou senha incorretos");
     }
 
-    // Verify password
     const isPasswordValid = await PasswordUtils.compare(
       data.password,
       user.password
@@ -85,60 +136,62 @@ export class AuthService {
       throw new AppError(401, "Email ou senha incorretos");
     }
 
-    // Generate token
     const token = JWTUtils.generate(user.id);
 
-    // Remove password from response
-    const { password: _, ...userWithoutPassword } = user;
-
     return {
-      user: userWithoutPassword,
       token,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        age: user.age,
+        city: user.city,
+
+        sexo: user.sexo ?? null,
+        peso: user.peso ?? null,
+        altura: user.altura ?? null,
+        atividade: user.atividade ?? null,
+
+        xp: user.xp,
+        level: user.level,
+        avatar_url: user.avatar_url ?? null,
+
+        created_at: user.created_at,
+        updated_at: user.updated_at,
+      },
     };
   }
 
-  static async getProfile(userId: string): Promise<any> {
+  // ----------------------------------------------------
+  // GET PROFILE ✅ (ADICIONADO)
+  // ----------------------------------------------------
+  static async getProfile(userId: string) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      include: {
-        planSubscription: true, // ← pega assinatura
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        age: true,
+        city: true,
+        avatar_url: true,
+
+        sexo: true,
+        peso: true,
+        altura: true,
+        atividade: true,
+
+        xp: true,
+        level: true,
+        created_at: true,
+        updated_at: true,
       },
     });
-  
+
     if (!user) {
       throw new AppError(404, "Usuário não encontrado");
     }
-  
-    // Verifica se assinatura é válida
-    const now = new Date();
-    const subscription = user.planSubscription;
-  
-    const hasValidSubscription =
-      subscription && subscription.endDate && new Date(subscription.endDate) > now;
-  
-    const plan = hasValidSubscription ? "PREMIUM" : "FREE";
-  
-    const { password: _, planSubscription, ...userWithoutPassword } = user;
-  
-    return {
-      ...userWithoutPassword,
-      plan,
-      planName: (subscription as any)?.plan?.name as string | null,
-      planExpiresAt: subscription?.endDate || null,
-    };
-  }
-  
 
-  static async updateProfile(
-    userId: string,
-    data: Partial<Pick<User, "name" | "age" | "city" | "avatar_url">>
-  ): Promise<Omit<User, "password">> {
-    const user = await prisma.user.update({
-      where: { id: userId },
-      data,
-    });
-
-    const { password: _, ...userWithoutPassword } = user;
-    return userWithoutPassword;
+    return user;
   }
 }

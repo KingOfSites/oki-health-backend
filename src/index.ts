@@ -1,8 +1,6 @@
 console.log("🔥 subscribeRoutes:", subscribeRoutes);
 console.log("🔥 authenticate:", authenticate);
 
-
-
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -10,10 +8,7 @@ import { env } from "./config/env";
 import prisma from "./config/database";
 import { authenticate } from "./middleware/auth";
 
-
-
-
-import routes from "./routes"; // ← Router principal (auth, challenges, wallet, chat)
+import routes from "./routes"; // Router principal
 import subscribeRoutes from "./routes/subscribe.routes";
 import challengePostsRoutes from "./routes/challengePosts.routes";
 
@@ -22,10 +17,10 @@ import { errorHandler } from "./middleware/errorHandler";
 const app = express();
 
 // --------------------------------------------------------
-// BODY PARSER
+// BODY PARSER — AGORA ACEITA IMAGENS GRANDES (ATÉ 50MB)
 // --------------------------------------------------------
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // --------------------------------------------------------
 // SECURITY
@@ -60,13 +55,11 @@ app.use(
 // ROUTES
 // --------------------------------------------------------
 
-// 🔥 ROTAS ESPECÍFICAS
+// 🔥 Rotas específicas SEM PREFIXO /api
 app.use("/api/challenge-posts", challengePostsRoutes);
 app.use("/api/subscribe", subscribeRoutes);
 
-
-
-// 🔥 ROTAS PRINCIPAIS (auth, challenges, wallet, chat)
+// 🔥 Router principal (auth, IA, wallet, challenges, payments, nutrition...)
 app.use("/api", routes);
 
 // --------------------------------------------------------

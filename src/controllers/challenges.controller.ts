@@ -6,13 +6,9 @@ import prisma from "../config/database";
 export class ChallengesController {
 
   // ================================
-  // ✔️ DESAFIOS DO USUÁRIO
+  // ✔️ MEUS DESAFIOS (INSCRITO)
   // ================================
-  static async listMyChallenges(
-    req: AuthRequest,
-    res: Response,
-    next: NextFunction
-  ) {
+  static async listMyChallenges(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       if (!req.userId) {
         return res.status(401).json({ success: false, message: "Não autenticado" });
@@ -26,11 +22,10 @@ export class ChallengesController {
     }
   }
 
-  static async listCreatedChallenges(
-    req: AuthRequest,
-    res: Response,
-    next: NextFunction
-  ) {
+  // ================================
+  // ✔️ DESAFIOS CRIADOS POR MIM
+  // ================================
+  static async listCreatedChallenges(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       if (!req.userId) {
         return res.status(401).json({ success: false, message: "Não autenticado" });
@@ -47,11 +42,7 @@ export class ChallengesController {
   // ================================
   // ✔️ CRIAR DESAFIO
   // ================================
-  static async createChallenge(
-    req: AuthRequest,
-    res: Response,
-    next: NextFunction
-  ) {
+  static async createChallenge(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       if (!req.userId) {
         return res.status(401).json({ success: false, message: "Não autenticado" });
@@ -99,41 +90,50 @@ export class ChallengesController {
   }
 
   // ================================
-  // ✔️ LISTAR TODOS OS DESAFIOS
+  // ✔️ BUSCAR DESAFIOS (Explorar)
   // ================================
-  static async searchChallenges(req: AuthRequest, res: Response, next: NextFunction) {
-    try {
-      const { location, filter } = req.query;
+ // ================================
+// ✔️ BUSCAR DESAFIOS (Explorar)
+// ================================
+static async searchChallenges(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const { location } = req.query;
 
-      if (!location || !filter) {
-        return res.status(400).json({
-          success: false,
-          message: "Parâmetros 'location' e 'filter' são obrigatórios",
-        });
-      }
-
-      const challenges = await prisma.challenge.findMany({
-        where: {
-          location: {
-            contains: String(location),
-          },
-        },
-        include: {
-          participants: true,
-        },
+    if (!location) {
+      return res.status(400).json({
+        success: false,
+        message: "Parâmetro obrigatório: location",
       });
-
-      return res.json({
-        success: true,
-        challenges,
-      });
-    } catch (error) {
-      return next(error);
     }
+
+    const search = String(location).toLowerCase();
+
+    const userId = req.userId ?? null;
+
+    const challenges = await prisma.challenge.findMany({
+      where: {
+        location: { contains: search },
+        // 🔥 NÃO mostrar desafios que o usuário criou
+        ...(userId ? { createdById: { not: userId } } : {}),
+      },
+      include: { participants: true },
+      orderBy: { created_at: "desc" },
+    });
+
+    return res.json({
+      success: true,
+      data: challenges,
+    });
+
+  } catch (error) {
+    console.error("searchChallenges error:", error);
+    return next(error);
   }
+}
+
 
   // ================================
-  // ✔️ ENTRAR EM UM DESAFIO
+  // ✔️ ENTRAR NO DESAFIO
   // ================================
   static async joinChallenge(req: AuthRequest, res: Response, next: NextFunction) {
     try {
@@ -142,12 +142,39 @@ export class ChallengesController {
       }
 
       const challengeId = req.params.challengeId;
+      if (!challengeId) {
+        return res.status(400).json({
+          success: false,
+          message: "ID do desafio inválido",
+        });
+      }
+
       const result = await ChallengesService.joinChallenge(req.userId, challengeId);
 
+      // 🟥 Requer pagamento
+      if (result.requiresPayment) {
+        return res.status(402).json({
+          success: false,
+          requiresPayment: true,
+          price: result.price,
+          message: result.message,
+        });
+      }
+
+      // 🟨 Já participa
+      if (result.already) {
+        return res.json({
+          success: true,
+          message: "Você já está participando deste desafio",
+          data: result.participant,
+        });
+      }
+
+      // 🟩 Entrou
       return res.json({
         success: true,
-        message: "Participação registrada",
-        data: result,
+        message: "Participação registrada com sucesso",
+        data: result.participant,
       });
 
     } catch (error) {
@@ -156,16 +183,65 @@ export class ChallengesController {
   }
 
   // ================================
-  // ✔️ GET DETAILS
+  // ✔️ DETALHES DO DESAFIO
   // ================================
-  static async getDetails(req: AuthRequest, res: Response, next: NextFunction) {
+static async getDetails(challengeId: string, userId: string) {
+  const challenge = await prisma.challenge.findUnique({
+    where: { id: challengeId },
+    include: {
+      participants: true,
+      createdBy: true,
+    },
+  });
+
+  if (!challenge) return null;
+
+  const alreadyJoined = challenge.participants.some(
+    (p) => p.userId === userId
+  );
+
+  return {
+    id: challenge.id,
+    title: challenge.title,
+    description: challenge.description,
+    startDate: challenge.startDate,
+    endDate: challenge.endDate,
+    reward: challenge.reward,
+    location: challenge.location,
+    entryPriceCents: challenge.entryPriceCents,
+
+    participants: challenge.participants.map((p) => ({
+      userId: p.userId,
+    })),
+
+    alreadyJoined,
+    createdBy: {
+      name: challenge.createdBy?.name || "Criador",
+    },
+
+    status: challenge.status,
+  };
+}
+
+
+  // ================================
+  // ✔️ FINALIZAR DESAFIO — ADICIONADO AGORA
+  // ================================
+  static async completeChallenge(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const userId = req.userId!;
-      const challengeId = req.params.id;
+      if (!req.userId) {
+        return res.status(401).json({ success: false, message: "Não autenticado" });
+      }
 
-      const data = await ChallengesService.getDetails(challengeId, userId);
+      const challengeId = req.params.challengeId;
 
-      return res.json({ success: true, data });
+      const result = await ChallengesService.completeChallenge(req.userId, challengeId);
+
+      return res.json({
+        success: true,
+        message: result.message,
+        reward: result.reward,
+      });
 
     } catch (error) {
       return next(error);
@@ -175,17 +251,14 @@ export class ChallengesController {
   // ================================
   // ✔️ EXCLUIR DESAFIO
   // ================================
-  static async deleteChallenge(
-    req: AuthRequest,
-    res: Response,
-    next: NextFunction
-  ) {
+  static async deleteChallenge(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       if (!req.userId) {
         return res.status(401).json({ success: false, message: "Não autenticado" });
       }
 
       const challengeId = req.params.id;
+
       const deleted = await ChallengesService.deleteChallenge(challengeId, req.userId);
 
       if (!deleted) {

@@ -1,16 +1,23 @@
 import { Router } from "express";
 import { SubscribeController } from "../controllers/subscribe.controller"; 
-import { authMiddleware } from "../middleware/auth"; // ← CORRETO
+import { authenticate } from "../middleware/auth";  // ← CORRETO!
 
 const router = Router();
 
+// ------------------------------------------------------
 // 💳 PAGAMENTO COM CARTÃO
-router.post("/card", authMiddleware, SubscribeController.subscribeWithCard);
+// ------------------------------------------------------
+router.post("/card", authenticate, SubscribeController.subscribeWithCard);
 
+// ------------------------------------------------------
 // 💸 PAGAMENTO COM PIX
-router.post("/pix", authMiddleware, SubscribeController.subscribeWithPix);
+// ------------------------------------------------------
+router.post("/pix", authenticate, SubscribeController.subscribeWithPix);
 
-// ⭐ STATUS PREMIUM (para o app saber se o usuário é premium)
-router.get("/status/:userId", authMiddleware, SubscribeController.getStatus);
+// ------------------------------------------------------
+// ⭐ STATUS PREMIUM DO USUÁRIO
+// (para o app saber se ele é premium ou não)
+// ------------------------------------------------------
+router.get("/status/:userId", authenticate, SubscribeController.getStatus);
 
 export default router;

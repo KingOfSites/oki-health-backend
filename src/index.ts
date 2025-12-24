@@ -1,31 +1,25 @@
-console.log("🔥 subscribeRoutes:", subscribeRoutes);
-console.log("🔥 authenticate:", authenticate);
-
-
-
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import { env } from "./config/env";
 import prisma from "./config/database";
-import { authenticate } from "./middleware/auth";
+import { errorHandler } from "./middleware/errorHandler";
 
-
-
-
-import routes from "./routes"; // ← Router principal (auth, challenges, wallet, chat)
+// Router principal
+import routes from "./routes";
 import subscribeRoutes from "./routes/subscribe.routes";
 import challengePostsRoutes from "./routes/challengePosts.routes";
-
-import { errorHandler } from "./middleware/errorHandler";
+import affiliateRoutes from "./routes/affiliate.routes";
+import settingsRoutes from "./routes/settings.routes";
+import avatarRoutes from "./routes/avatar.routes";
 
 const app = express();
 
 // --------------------------------------------------------
-// BODY PARSER
+// BODY PARSER — AGORA ACEITA IMAGENS GRANDES (ATÉ 50MB)
 // --------------------------------------------------------
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // --------------------------------------------------------
 // SECURITY
@@ -60,25 +54,29 @@ app.use(
 // ROUTES
 // --------------------------------------------------------
 
-// 🔥 ROTAS ESPECÍFICAS
+// Middleware de log para debug
+app.use((req, res, next) => {
+  console.log(`📥 ${req.method} ${req.path} - IP: ${req.ip} - Origin: ${req.headers.origin || 'none'}`);
+  next();
+});
+
+// Health check endpoint (antes das rotas)
+app.get("/api/health", (req, res) => {
+  res.json({ 
+    success: true, 
+    message: "Server is running",
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Rotas específicas
 app.use("/api/challenge-posts", challengePostsRoutes);
 app.use("/api/subscribe", subscribeRoutes);
-
-// Importar e usar rotas de afiliados
-import affiliateRoutes from "./routes/affiliate.routes";
 app.use("/api/affiliates", affiliateRoutes);
-
-// Importar e usar rotas de configurações
-import settingsRoutes from "./routes/settings.routes";
 app.use("/api/settings", settingsRoutes);
-
-// Importar e usar rotas de avatar
-import avatarRoutes from "./routes/avatar.routes";
 app.use("/api/avatar", avatarRoutes);
 
-
-
-// 🔥 ROTAS PRINCIPAIS (auth, challenges, wallet, chat)
+// Router principal (auth, IA, wallet, challenges, payments, nutrition...)
 app.use("/api", routes);
 
 // --------------------------------------------------------

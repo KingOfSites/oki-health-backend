@@ -28,6 +28,8 @@ model User {
   sexo      String?
   atividade String?
 
+    isPro      Boolean   @default(false) // Indica se o usuário é PRO
+
   // Configurações do usuário
   darkMode      Boolean @default(true)
   notifications Boolean @default(true)
@@ -52,6 +54,7 @@ model User {
   @@map("users")
 }
 
+
 model Challenge {
   id              String   @id @default(uuid())
   title           String
@@ -73,20 +76,21 @@ model Challenge {
   participants ChallengeParticipant[]
   posts        ChallengePost[]
   createdBy    User                   @relation(fields: [createdById], references: [id])
-
   chatMessages ChallengeChat[]
+  transactions Transaction[]
 
   @@map("challenges")
 }
 
 model ChallengeParticipant {
-  id          String    @id @default(uuid())
+  id          String   @id @default(uuid())
   userId      String
   challengeId String
-  progress    Float     @default(0)
-  joinedAt    DateTime  @default(now())
-  challenge   Challenge @relation(fields: [challengeId], references: [id])
-  users       User      @relation(fields: [userId], references: [id])
+  progress    Float    @default(0)
+  joinedAt    DateTime @default(now())
+
+  challenge Challenge @relation(fields: [challengeId], references: [id])
+  user      User      @relation(fields: [userId], references: [id])
 
   @@unique([userId, challengeId])
   @@index([challengeId], map: "challenge_participants_challengeId_fkey")
@@ -94,21 +98,23 @@ model ChallengeParticipant {
 }
 
 model Transaction {
-  id         String   @id @default(uuid())
-  userId     String? // <-- permitir nulo TEMPORARIAMENTE
-  type       String
-  amount     Float
+  id         String   @id @default(cuid())
   created_at DateTime @default(now())
 
-  // Campos adicionais (mantidos do banco existente)
+  // relation with User
+  user   User?   @relation(fields: [userId], references: [id])
+  userId String?
+
+  // relation with Challenge
+  challenge   Challenge? @relation(fields: [challengeId], references: [id])
   challengeId String?
+
+  type        String
+  amount      Float
   description String?
-  mpPaymentId String?
-  status      String?
+  mpPaymentId String? @unique
+  status      String  @default("pending")
 
-  user User? @relation(fields: [userId], references: [id])
-
-  @@index([userId], map: "transactions_userId_fkey")
   @@map("transactions")
 }
 
@@ -118,7 +124,8 @@ model Achievement {
   title      String
   points     Int      @default(0)
   achievedAt DateTime @default(now())
-  user       User     @relation(fields: [userId], references: [id])
+
+  user User @relation(fields: [userId], references: [id])
 
   @@index([userId], map: "achievements_userId_fkey")
   @@map("achievements")
@@ -126,7 +133,7 @@ model Achievement {
 
 model Plan {
   id            String             @id @default(uuid())
-  name          String
+  name          String             @unique
   price         Float
   benefits      String?
   created_at    DateTime           @default(now())
@@ -142,8 +149,9 @@ model PlanSubscription {
   startDate DateTime  @default(now())
   endDate   DateTime?
   active    Boolean   @default(true)
-  plan      Plan      @relation(fields: [planId], references: [id])
-  user      User      @relation(fields: [userId], references: [id])
+
+  plan Plan @relation(fields: [planId], references: [id])
+  user User @relation(fields: [userId], references: [id])
 
   @@index([planId], map: "plan_subscriptions_planId_fkey")
   @@map("plan_subscriptions")

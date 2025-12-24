@@ -2,28 +2,11 @@ import prisma from "../config/database";
 
 export class ChallengesService {
 
-  // -----------------------
-  // PARTICIPAR DO DESAFIO
-  // -----------------------
-  static async joinChallenge(userId: string, challengeId: string) {
-    const existing = await prisma.challengeParticipant.findUnique({
-      where: {
-        userId_challengeId: { userId, challengeId },
-      },
-    });
-
-    if (existing) return existing;
-
-    return prisma.challengeParticipant.create({
-      data: { userId, challengeId },
-    });
-  }
-
-  // --------------------------------
-  // MEUS DESAFIOS (INSCRIÇÕES)
-  // --------------------------------
+  // ================================
+  // 1 — MEUS DESAFIOS
+  // ================================
   static async listMyChallenges(userId: string) {
-    const rows = await prisma.challengeParticipant.findMany({
+    return prisma.challengeParticipant.findMany({
       where: { userId },
       include: { challenge: true },
       orderBy: { joinedAt: "desc" },
@@ -71,9 +54,9 @@ export class ChallengesService {
   // DESAFIOS CRIADOS POR MIM
   // --------------------------------
   static async listCreatedChallenges(userId: string) {
-    const rows = await prisma.challenge.findMany({
+    return prisma.challenge.findMany({
       where: { createdById: userId },
-      orderBy: { created_at: "desc" },
+      include: { participants: true },
     });
 
     const counts = await prisma.challengeParticipant.groupBy({
@@ -111,68 +94,21 @@ export class ChallengesService {
     });
   }
 
-  // --------------------------------
-  // DETALHES DO DESAFIO
-  // --------------------------------
+  // ================================
+  // 6 — DETALHES DO DESAFIO
+  // ================================
   static async getDetails(challengeId: string, userId: string) {
     const challenge = await prisma.challenge.findUnique({
       where: { id: challengeId },
       include: {
+        participants: true,
         createdBy: true,
-        participants: {
-          include: {
-            users: true, // <-- CORRETO
-          },
-        },
-        posts: {
-          include: { user: true },
-          orderBy: { created_at: "desc" },
-        },
       },
     });
 
-    if (!challenge) throw new Error("Desafio não encontrado");
+    if (!challenge) return null;
 
-    const is_creator = challenge.createdById === userId;
-
-    const is_participant = challenge.participants.some(p => p.userId === userId);
-
-    // STATUS
-    const now = new Date();
-    let computed_status: "upcoming" | "active" | "completed";
-
-    if (now < challenge.startDate) computed_status = "upcoming";
-    else if (now > challenge.endDate) computed_status = "completed";
-    else computed_status = "active";
-
-    const participants_count = challenge.participants.length;
-
-    // RANKING
-    const ranking = challenge.participants
-      .map(p => ({
-        user_id: p.users.id,
-        user_name: p.users.name,
-        percent_progress: Math.min(100, Math.round(p.progress)),
-        photos_submitted: challenge.posts.filter(post => post.userId === p.userId).length,
-        points: Math.round(p.progress * 2),
-      }))
-      .sort((a, b) => b.percent_progress - a.percent_progress)
-      .map((p, index) => ({
-        ...p,
-        position: index + 1,
-      }));
-
-    // POSTS
-    const posts = challenge.posts.map(post => ({
-      id: post.id,
-      challenge_id: post.challengeId,
-      user_id: post.userId,
-      image_path: post.imageUrl,
-      caption: post.caption,
-      status: "approved",
-      created_at: post.created_at,
-      user_name: post.user.name,
-    }));
+    const isParticipant = challenge.participants.some(p => p.userId === userId);
 
     return {
       challenge: {

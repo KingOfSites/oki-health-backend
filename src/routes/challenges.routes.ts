@@ -4,23 +4,61 @@ import { ChallengesController } from "../controllers/challenges.controller";
 
 const challengeRoutes = Router();
 
-challengeRoutes.get("/my", authenticate, ChallengesController.listMyChallenges);
+/* ============================================================
+🔥 1 — DETALHES DO DESAFIO
+============================================================ */
+challengeRoutes.get(
+  "/:id/details",
+  authenticate,
+  ChallengesController.getDetails
+);
 
-// ✔ Desafios criados pelo usuário
-challengeRoutes.get("/created", authenticate, ChallengesController.listCreatedChallenges);
+/* ============================================================
+🔥 2 — MEUS DESAFIOS
+============================================================ */
+challengeRoutes.get(
+  "/my",
+  authenticate,
+  ChallengesController.listMyChallenges
+);
 
-// ✔ Criar desafio
-challengeRoutes.post("/", authenticate, ChallengesController.createChallenge);
+/* ============================================================
+🔥 3 — DESAFIOS CRIADOS POR MIM
+============================================================ */
+challengeRoutes.get(
+  "/created",
+  authenticate,
+  ChallengesController.listCreatedChallenges
+);
 
 // ✔ Buscar desafios por localização (autenticação opcional para mostrar se está participando)
 challengeRoutes.get("/search", optionalAuthenticate, ChallengesController.searchChallenges);
 
-// ✔ Participar do desafio
-challengeRoutes.post("/:challengeId/join", authenticate, ChallengesController.joinChallenge);
+/* ============================================================
+🔥 5 — ENTRAR NO DESAFIO
+============================================================ */
+challengeRoutes.post(
+  "/:challengeId/join",
+  authenticate,
+  ChallengesController.joinChallenge
+);
 
-// ✔ Detalhes do desafio
-challengeRoutes.get("/:id/details", authenticate, ChallengesController.getDetails);
+/* ============================================================
+🔥 6 — CRIAR DESAFIO
+============================================================ */
+challengeRoutes.post(
+  "/",
+  authenticate,
+  ChallengesController.createChallenge
+);
 
-challengeRoutes.delete("/:id", authenticate, ChallengesController.deleteChallenge);
+/* ============================================================
+🔥 7 — EXCLUIR DESAFIO
+============================================================ */
+challengeRoutes.delete(
+  "/:id",
+  authenticate,
+  ChallengesController.deleteChallenge
+);
 
 export default challengeRoutes;

@@ -8,7 +8,13 @@ const router = Router();
 router.post("/card", authenticate, SubscribeController.subscribeWithCard);
 router.post("/pix", authenticate, SubscribeController.subscribeWithPix);
 
-// 🔥 ROTA DE STATUS (não precisa auth)
+// 🔥 VERIFICAR STATUS DO PAGAMENTO PIX
+router.get("/pix/:paymentId", authenticate, SubscribeController.checkPixPayment);
+
+// 🔥 ROTA DE STATUS (com auth - pega userId do token)
+router.get("/status", authenticate, SubscribeController.getMyStatus);
+
+// 🔥 ROTA DE STATUS POR USER ID (não precisa auth - para compatibilidade)
 router.get("/status/:userId", SubscribeController.getStatus);
 
 export default router;

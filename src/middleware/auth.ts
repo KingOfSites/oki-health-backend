@@ -45,6 +45,10 @@ export const authenticate = async (
     // Anexa o userId ao request
     req.userId = decoded.userId;
 
+    // Log para debug
+    console.log("🔐 [Auth Middleware] Token validado - userId:", decoded.userId);
+    console.log("🔐 [Auth Middleware] Token payload completo:", JSON.stringify(decoded, null, 2));
+
     // Passa o controle para o próximo middleware ou rota
     return next();
   } catch (error) {

@@ -28,6 +28,9 @@ model User {
   altura     Int?      // cm
   atividade  String?   // sedentario / leve / moderado / intenso / muito_intenso
 
+  // 🔥 STATUS PREMIUM
+  isPro      Boolean   @default(false) // Indica se o usuário é PRO
+
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
@@ -121,7 +124,7 @@ model Achievement {
 
 model Plan {
   id            String             @id @default(uuid())
-  name          String
+  name          String             @unique
   price         Float
   benefits      String?
   created_at    DateTime           @default(now())

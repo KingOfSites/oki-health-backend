@@ -86,6 +86,9 @@ export class AuthService {
         peso: data.pesoKg,
         altura: data.alturaCm,
         atividade: data.atividade,
+
+        // 🔥 IMPORTANTE: Garantir que isPro seja false para novos usuários
+        isPro: false,
       },
     });
 

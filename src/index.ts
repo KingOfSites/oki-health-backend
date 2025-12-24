@@ -55,6 +55,21 @@ app.use(
 // ROUTES
 // --------------------------------------------------------
 
+// Middleware de log para debug
+app.use((req, res, next) => {
+  console.log(`📥 ${req.method} ${req.path} - IP: ${req.ip} - Origin: ${req.headers.origin || 'none'}`);
+  next();
+});
+
+// Health check endpoint (antes das rotas)
+app.get("/api/health", (req, res) => {
+  res.json({ 
+    success: true, 
+    message: "Server is running",
+    timestamp: new Date().toISOString()
+  });
+});
+
 // 🔥 Rotas específicas SEM PREFIXO /api
 app.use("/api/challenge-posts", challengePostsRoutes);
 app.use("/api/subscribe", subscribeRoutes);
@@ -95,9 +110,12 @@ const startServer = async () => {
     await prisma.$connect();
     console.log("✅ Database connected");
 
-    app.listen(PORT, () => {
+    // Escutar em 0.0.0.0 para aceitar conexões do emulador/dispositivos
+    app.listen(PORT, "0.0.0.0", () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`🔗 API base URL: http://localhost:${PORT}/api`);
+      console.log(`📱 Para emulador Android: http://10.0.2.2:${PORT}/api`);
+      console.log(`🌐 Para dispositivos físicos: http://SEU_IP:${PORT}/api`);
     });
   } catch (error) {
     console.error("❌ Failed to start server:", error);

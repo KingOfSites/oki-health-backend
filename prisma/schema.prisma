@@ -22,6 +22,21 @@ model User {
   total_earned    Float @default(0)
   total_withdrawn Float @default(0)
 
+  // Campos adicionais (mantidos do banco existente)
+  altura    Float?
+  peso      Float?
+  sexo      String?
+  atividade String?
+
+  // Configurações do usuário
+  darkMode      Boolean @default(true)
+  notifications Boolean @default(true)
+
+  affiliateCode String? @unique
+  referredBy    String?
+  referrer      User?   @relation("UserReferrals", fields: [referredBy], references: [id])
+  referrals     User[]  @relation("UserReferrals")
+
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
@@ -32,30 +47,32 @@ model User {
   planSubscription  PlanSubscription?
   posts             ChallengePost[]
   chatMessages      ChallengeChat[]
+  referralEarnings  Referral[]
 
   @@map("users")
 }
 
 model Challenge {
-  id              String                 @id @default(uuid())
+  id              String   @id @default(uuid())
   title           String
   description     String
   category        String
   startDate       DateTime
   endDate         DateTime
-  reward          Float                  @default(0)
+  reward          Float    @default(0)
   location        String?
   createdById     String
-  created_at      DateTime               @default(now())
+  created_at      DateTime @default(now())
   coverUrl        String?
-  entryPriceCents Int                    @default(0)
+  entryPriceCents Int      @default(0)
   maxParticipants Int?
-  participants    ChallengeParticipant[]
-  posts           ChallengePost[]
-  createdBy       User                   @relation(fields: [createdById], references: [id])
 
-  // 🔥 ADICIONADO — relação inversa com ChallengePost
-  posts ChallengePost[]
+  // Campo adicional (mantido do banco existente)
+  status String?
+
+  participants ChallengeParticipant[]
+  posts        ChallengePost[]
+  createdBy    User                   @relation(fields: [createdById], references: [id])
 
   chatMessages ChallengeChat[]
 
@@ -83,9 +100,15 @@ model Transaction {
   amount     Float
   created_at DateTime @default(now())
 
+  // Campos adicionais (mantidos do banco existente)
+  challengeId String?
+  description String?
+  mpPaymentId String?
+  status      String?
+
   user User? @relation(fields: [userId], references: [id])
 
-  @@index([user_id], map: "transactions_userId_fkey")
+  @@index([userId], map: "transactions_userId_fkey")
   @@map("transactions")
 }
 
@@ -147,10 +170,29 @@ model ChallengeChat {
   challengeId String
   userId      String
   message     String
+  imageUrl    String?
   created_at  DateTime @default(now())
 
   challenge Challenge @relation(fields: [challengeId], references: [id])
   user      User      @relation(fields: [userId], references: [id])
 
-    @@map("challenge_chat")
-  }
+  @@map("challenge_chat")
+}
+
+model Referral {
+  id             String    @id @default(uuid())
+  referrerId     String
+  referredUserId String
+  commission     Float     @default(0)
+  commissionRate Float     @default(0.1) // 10% padrão
+  status         String    @default("pending") // pending, paid, cancelled
+  source         String? // "signup", "subscription", etc
+  created_at     DateTime  @default(now())
+  paid_at        DateTime?
+
+  referrer User @relation(fields: [referrerId], references: [id])
+
+  @@index([referrerId])
+  @@index([referredUserId])
+  @@map("referrals")
+}

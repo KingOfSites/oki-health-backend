@@ -47,6 +47,43 @@ export const authenticate = async (
   }
 };
 
+// Middleware de autenticação opcional (não falha se não tiver token)
+export const optionalAuthenticate = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const authHeader = req.headers.authorization;
+
+    // Se não tiver header, continua sem userId
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return next();
+    }
+
+    const token = authHeader.split(" ")[1];
+
+    if (!env.JWT_SECRET) {
+      return next(); // Continua sem autenticação
+    }
+
+    try {
+      const decoded = jwt.verify(token, env.JWT_SECRET as string) as JwtPayload;
+      if (decoded.userId) {
+        req.userId = decoded.userId;
+      }
+    } catch (err) {
+      // Token inválido, mas continua sem autenticação
+      // Não retorna erro, apenas não define userId
+    }
+
+    return next();
+  } catch (error) {
+    // Em caso de erro, continua sem autenticação
+    return next();
+  }
+};
+
 
 
 

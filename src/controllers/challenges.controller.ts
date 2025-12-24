@@ -105,13 +105,45 @@ export class ChallengesController {
     try {
       const { location, filter } = req.query;
 
-      if (!location || !filter) {
-        return res.status(400).json({
-          success: false,
-          message: "Parâmetros 'location' e 'filter' são obrigatórios",
+      // Se location for "all" ou vazio, retornar todos os desafios
+      if (location === "all" || !location) {
+        const userId = req.userId; // Pode ser undefined se não autenticado
+        const challenges = await prisma.challenge.findMany({
+          include: {
+            participants: true,
+          },
+          orderBy: {
+            created_at: "desc",
+          },
+        });
+
+        return res.json({
+          success: true,
+          challenges: challenges.map((c) => ({
+            id: c.id,
+            title: c.title,
+            description: c.description,
+            category: c.category,
+            start_date: c.startDate,
+            end_date: c.endDate,
+            reward: c.reward,
+            location: c.location,
+            cover_url: c.coverUrl,
+            entry_price_cents: c.entryPriceCents,
+            participants_count: c.participants.length,
+            is_participant: userId ? c.participants.some((p) => p.userId === userId) : false,
+          })),
         });
       }
 
+      if (!filter) {
+        return res.status(400).json({
+          success: false,
+          message: "Parâmetro 'filter' é obrigatório quando 'location' é especificado",
+        });
+      }
+
+      const userId = req.userId; // Pode ser undefined se não autenticado
       const challenges = await prisma.challenge.findMany({
         where: {
           location: {
@@ -121,11 +153,27 @@ export class ChallengesController {
         include: {
           participants: true,
         },
+        orderBy: {
+          created_at: "desc",
+        },
       });
 
       return res.json({
         success: true,
-        challenges,
+        challenges: challenges.map((c) => ({
+          id: c.id,
+          title: c.title,
+          description: c.description,
+          category: c.category,
+          start_date: c.startDate,
+          end_date: c.endDate,
+          reward: c.reward,
+          location: c.location,
+          cover_url: c.coverUrl,
+          entry_price_cents: c.entryPriceCents,
+          participants_count: c.participants.length,
+          is_participant: userId ? c.participants.some((p) => p.userId === userId) : false,
+        })),
       });
     } catch (error) {
       return next(error);

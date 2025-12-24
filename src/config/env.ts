@@ -19,14 +19,12 @@ const envSchema = z.object({
   MERCADOPAGO_ACCESS_TOKEN: z.string().optional(),
 
   // ------------------------------
-  // 🔥 ADICIONAR VARIÁVEIS FIREBASE
+  // 🔥 VARIÁVEIS FIREBASE (opcionais para desenvolvimento)
   // ------------------------------
-  FIREBASE_PROJECT_ID: z.string().min(1, "FIREBASE_PROJECT_ID is required"),
-  FIREBASE_CLIENT_EMAIL: z.string().min(1, "FIREBASE_CLIENT_EMAIL is required"),
-  FIREBASE_PRIVATE_KEY: z.string().min(1, "FIREBASE_PRIVATE_KEY is required"),
-  FIREBASE_STORAGE_BUCKET: z
-    .string()
-    .min(1, "FIREBASE_STORAGE_BUCKET is required"),
+  FIREBASE_PROJECT_ID: z.string().optional(),
+  FIREBASE_CLIENT_EMAIL: z.string().optional(),
+  FIREBASE_PRIVATE_KEY: z.string().optional(),
+  FIREBASE_STORAGE_BUCKET: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

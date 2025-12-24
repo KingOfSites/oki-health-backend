@@ -64,6 +64,18 @@ app.use(
 app.use("/api/challenge-posts", challengePostsRoutes);
 app.use("/api/subscribe", subscribeRoutes);
 
+// Importar e usar rotas de afiliados
+import affiliateRoutes from "./routes/affiliate.routes";
+app.use("/api/affiliates", affiliateRoutes);
+
+// Importar e usar rotas de configurações
+import settingsRoutes from "./routes/settings.routes";
+app.use("/api/settings", settingsRoutes);
+
+// Importar e usar rotas de avatar
+import avatarRoutes from "./routes/avatar.routes";
+app.use("/api/avatar", avatarRoutes);
+
 
 
 // 🔥 ROTAS PRINCIPAIS (auth, challenges, wallet, chat)
@@ -102,9 +114,11 @@ const startServer = async () => {
     await prisma.$connect();
     console.log("✅ Database connected");
 
-    app.listen(PORT, () => {
+    // Escutar em todas as interfaces (0.0.0.0) para permitir conexões de dispositivos móveis
+    app.listen(PORT, "0.0.0.0", () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`🔗 API base URL: http://localhost:${PORT}/api`);
+      console.log(`📱 Para dispositivos móveis, use o IP da sua máquina na mesma rede`);
     });
   } catch (error) {
     console.error("❌ Failed to start server:", error);

@@ -32,6 +32,15 @@ export class SubscribeService {
       },
     });
 
+    // Calcular comissão de afiliado se o usuário foi indicado
+    try {
+      const { AffiliateService } = await import("./affiliate.service");
+      await AffiliateService.calculateCommissionForSubscription(userId, plan.price);
+    } catch (error) {
+      // Não falhar a assinatura se houver erro no cálculo de comissão
+      console.error("Erro ao calcular comissão de afiliado:", error);
+    }
+
     return true;
   }
 }

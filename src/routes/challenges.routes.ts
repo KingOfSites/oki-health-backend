@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { authenticate } from "../middleware/auth";
+import { authenticate, optionalAuthenticate } from "../middleware/auth";
 import { ChallengesController } from "../controllers/challenges.controller";
 
 const challengeRoutes = Router();
@@ -12,8 +12,8 @@ challengeRoutes.get("/created", authenticate, ChallengesController.listCreatedCh
 // ✔ Criar desafio
 challengeRoutes.post("/", authenticate, ChallengesController.createChallenge);
 
-// ✔ Buscar desafios por localização
-challengeRoutes.get("/search", ChallengesController.searchChallenges);
+// ✔ Buscar desafios por localização (autenticação opcional para mostrar se está participando)
+challengeRoutes.get("/search", optionalAuthenticate, ChallengesController.searchChallenges);
 
 // ✔ Participar do desafio
 challengeRoutes.post("/:challengeId/join", authenticate, ChallengesController.joinChallenge);

@@ -6,9 +6,23 @@ export class ChallengesService {
   // 1 — MEUS DESAFIOS
   // ================================
   static async listMyChallenges(userId: string) {
-    return prisma.challengeParticipant.findMany({
+    const rows = await prisma.challengeParticipant.findMany({
       where: { userId },
-      include: { challenge: true },
+      include: {
+        challenge: {
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            category: true,
+            startDate: true,
+            endDate: true,
+            coverUrl: true,
+            entryPriceCents: true,
+            createdById: true,
+          },
+        },
+      },
       orderBy: { joinedAt: "desc" },
     });
 
@@ -54,9 +68,23 @@ export class ChallengesService {
   // DESAFIOS CRIADOS POR MIM
   // --------------------------------
   static async listCreatedChallenges(userId: string) {
-    return prisma.challenge.findMany({
+    const rows = await prisma.challenge.findMany({
       where: { createdById: userId },
-      include: { participants: true },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        category: true,
+        startDate: true,
+        endDate: true,
+        coverUrl: true,
+        entryPriceCents: true,
+        participants: {
+          select: {
+            id: true,
+          },
+        },
+      },
     });
 
     const counts = await prisma.challengeParticipant.groupBy({
@@ -85,7 +113,7 @@ export class ChallengesService {
         status: computed_status,
         start_date: c.startDate,
         end_date: c.endDate,
-        participants_count: countMap.get(c.id) || 0,
+        participants_count: countMap.get(c.id) || c.participants.length || 0,
         cover_url: c.coverUrl,
         entry_price_cents: c.entryPriceCents,
         is_creator: true,
@@ -100,15 +128,43 @@ export class ChallengesService {
   static async getDetails(challengeId: string, userId: string) {
     const challenge = await prisma.challenge.findUnique({
       where: { id: challengeId },
-      include: {
-        participants: true,
-        createdBy: true,
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        category: true,
+        startDate: true,
+        endDate: true,
+        reward: true,
+        location: true,
+        entryPriceCents: true,
+        coverUrl: true,
+        createdById: true,
+        participants: {
+          select: {
+            userId: true,
+          },
+        },
+        createdBy: {
+          select: {
+            name: true,
+          },
+        },
       },
     });
 
     if (!challenge) return null;
 
+    // Calcular status baseado nas datas
+    const now = new Date();
+    let computed_status: "upcoming" | "active" | "completed";
+    if (now < challenge.startDate) computed_status = "upcoming";
+    else if (now > challenge.endDate) computed_status = "completed";
+    else computed_status = "active";
+
     const isParticipant = challenge.participants.some(p => p.userId === userId);
+    const participants_count = challenge.participants.length;
+    const is_creator = challenge.createdById === userId;
 
     return {
       challenge: {
@@ -116,7 +172,7 @@ export class ChallengesService {
         title: challenge.title,
         description: challenge.description,
         type: challenge.category,
-        status: computed_status, // Usa o status calculado
+        status: computed_status,
         start_date: challenge.startDate,
         end_date: challenge.endDate,
         entry_price_cents: challenge.entryPriceCents,
@@ -125,10 +181,11 @@ export class ChallengesService {
         rules: null,
         computed_status,
         is_creator,
-        is_participant,
+        is_participant: isParticipant,
+        createdBy: challenge.createdBy,
       },
-      posts,
-      ranking,
+      posts: [],
+      ranking: [],
       chat: [],
     };
   }
@@ -140,8 +197,23 @@ export class ChallengesService {
     const challenges = await prisma.challenge.findMany({
       // Removido where: { status: "active" } pois status não existe no schema
       orderBy: { created_at: "desc" },
-      include: {
-        participants: true,
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        category: true,
+        startDate: true,
+        endDate: true,
+        reward: true,
+        location: true,
+        coverUrl: true,
+        entryPriceCents: true,
+        created_at: true,
+        participants: {
+          select: {
+            userId: true,
+          },
+        },
       },
     });
 
@@ -166,8 +238,8 @@ export class ChallengesService {
         entry_price_cents: c.entryPriceCents,
         status: computed_status,
         created_at: c.created_at,
-        participants_count: c.participants.length,
-        is_participant: c.participants.some(p => p.userId === userId),
+        participants_count: c.participants?.length || 0,
+        is_participant: userId ? (c.participants?.some(p => p.userId === userId) || false) : false,
       };
     });
   }
@@ -196,5 +268,135 @@ export class ChallengesService {
     await prisma.challenge.delete({ where: { id: challenge.id } });
 
     return true;
+  }
+
+  // --------------------------------
+  // PARTICIPAR DE DESAFIO
+  // --------------------------------
+  static async joinChallenge(userId: string, challengeId: string) {
+    // Verificar se o desafio existe
+    const challenge = await prisma.challenge.findUnique({
+      where: { id: challengeId },
+    });
+
+    if (!challenge) {
+      throw new Error("Desafio não encontrado");
+    }
+
+    // Verificar se já está participando
+    const existingParticipant = await prisma.challengeParticipant.findUnique({
+      where: {
+        userId_challengeId: {
+          userId,
+          challengeId,
+        },
+      },
+    });
+
+    if (existingParticipant) {
+      return {
+        already: true,
+        requiresPayment: false,
+        participant: existingParticipant,
+      };
+    }
+
+    // Verificar se o desafio tem preço de entrada
+    const entryPrice = challenge.entryPriceCents || 0;
+
+    if (entryPrice > 0) {
+      // Verificar se já existe pagamento aprovado
+      const paidTransaction = await prisma.transaction.findFirst({
+        where: {
+          userId,
+          challengeId,
+          type: "challenge_entry",
+          status: "approved",
+        },
+      });
+
+      if (!paidTransaction) {
+        // Requer pagamento
+        return {
+          requiresPayment: true,
+          already: false,
+          price: entryPrice / 100, // Converter centavos para reais
+          message: `Este desafio requer pagamento de entrada de R$ ${(entryPrice / 100).toFixed(2)}`,
+        };
+      }
+    }
+
+    // Criar participante
+    const participant = await prisma.challengeParticipant.create({
+      data: {
+        userId,
+        challengeId,
+        progress: 0,
+      },
+    });
+
+    return {
+      requiresPayment: false,
+      already: false,
+      participant,
+    };
+  }
+
+  // --------------------------------
+  // COMPLETAR DESAFIO
+  // --------------------------------
+  static async completeChallenge(userId: string, challengeId: string) {
+    // Verificar se o desafio existe
+    const challenge = await prisma.challenge.findUnique({
+      where: { id: challengeId },
+    });
+
+    if (!challenge) {
+      throw new Error("Desafio não encontrado");
+    }
+
+    // Verificar se está participando
+    const participant = await prisma.challengeParticipant.findUnique({
+      where: {
+        userId_challengeId: {
+          userId,
+          challengeId,
+        },
+      },
+    });
+
+    if (!participant) {
+      throw new Error("Você não está participando deste desafio");
+    }
+
+    // Atualizar progresso para 100%
+    await prisma.challengeParticipant.update({
+      where: {
+        userId_challengeId: {
+          userId,
+          challengeId,
+        },
+      },
+      data: {
+        progress: 100,
+      },
+    });
+
+    // Adicionar recompensa ao saldo do usuário
+    const reward = challenge.reward || 0;
+    if (reward > 0) {
+      await prisma.user.update({
+        where: { id: userId },
+        data: {
+          balance: { increment: reward },
+          total_earned: { increment: reward },
+        },
+      });
+    }
+
+    return {
+      message: "Desafio completado com sucesso!",
+      reward,
+    };
   }
 }

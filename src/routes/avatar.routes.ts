@@ -61,10 +61,12 @@ router.post("/upload", authenticate, upload.single("file"), async (req: AuthRequ
     // Tornar o arquivo público
     await fileUpload.makePublic();
 
-    // Obter URL pública
-    const url = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+    // Obter URL pública do Firebase Storage (formato firebasestorage.googleapis.com)
+    // Este é o formato oficial de URL pública do Firebase Storage
+    const encodedFileName = encodeURIComponent(fileName);
+    const url = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodedFileName}?alt=media`;
     
-    console.log(`[Avatar Upload] ✅ Upload concluído! URL: ${url}`);
+    console.log(`[Avatar Upload] ✅ Upload concluído! URL pública do Firebase gerada.`);
 
     return res.json({ 
       success: true,

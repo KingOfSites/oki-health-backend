@@ -220,4 +220,65 @@ export class AuthService {
 
     return user;
   }
+
+  // ----------------------------------------------------
+  // UPDATE PROFILE ✅
+  // ----------------------------------------------------
+  static async updateProfile(
+    userId: string,
+    data: {
+      name?: string;
+      age?: number;
+      city?: string;
+      avatar_url?: string;
+      sexo?: "M" | "F";
+      peso?: number;
+      altura?: number;
+      atividade?: "sedentario" | "leve" | "moderado" | "intenso" | "muito_intenso";
+    }
+  ) {
+    // Verificar se o usuário existe (apenas id para evitar referências circulares)
+    const userExists = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true },
+    });
+
+    if (!userExists) {
+      throw new AppError(404, "Usuário não encontrado");
+    }
+
+    const updateData: any = {};
+    
+    if (data.name !== undefined) updateData.name = data.name;
+    if (data.age !== undefined) updateData.age = data.age;
+    if (data.city !== undefined) updateData.city = data.city;
+    if (data.avatar_url !== undefined) updateData.avatar_url = data.avatar_url;
+    if (data.sexo !== undefined) updateData.sexo = data.sexo;
+    if (data.peso !== undefined) updateData.peso = data.peso;
+    if (data.altura !== undefined) updateData.altura = data.altura;
+    if (data.atividade !== undefined) updateData.atividade = data.atividade;
+
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: updateData,
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        age: true,
+        city: true,
+        avatar_url: true,
+        sexo: true,
+        peso: true,
+        altura: true,
+        atividade: true,
+        xp: true,
+        level: true,
+        created_at: true,
+        updated_at: true,
+      },
+    });
+
+    return updated;
+  }
 }

@@ -12,7 +12,9 @@
     "prisma:studio": "prisma studio",
     "postinstall": "prisma generate",
     "seed:challenges": "tsx src/scripts/seed-challenges.ts",
-    "seed:plans": "tsx src/scripts/seed-plans.ts"
+    "seed:plans": "tsx src/scripts/seed-plans.ts",
+    "check:port": "node scripts/check-port.js",
+    "add:resources": "tsx scripts/add-resources.ts"
   },
   "keywords": [
     "oki",

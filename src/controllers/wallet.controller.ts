@@ -1,13 +1,13 @@
 import { Request, Response } from "express";
 import prisma from "../config/database";
-import crypto from "crypto";
+import { AuthRequest } from "../middleware/auth";
 
 export class WalletController {
 
   // GET /api/wallet
   static async getWallet(req: Request, res: Response) {
     try {
-      const userId = (req as any).user?.id;
+      const userId = (req as AuthRequest).userId;
       if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
       const user = await prisma.user.findUnique({
@@ -16,15 +16,20 @@ export class WalletController {
           balance: true,
           total_earned: true,
           total_withdrawn: true,
+          xp: true,
+          level: true,
         },
       });
 
       if (!user) return res.status(404).json({ error: "User not found" });
 
+      // Retornar valores diretamente como Float (reais) conforme o schema
       return res.json({
-        balance: Math.round((user.balance ?? 0) * 100),
-        total_earned: Math.round((user.total_earned ?? 0) * 100),
-        total_withdrawn: Math.round((user.total_withdrawn ?? 0) * 100),
+        balance: user.balance ?? 0,
+        total_earned: user.total_earned ?? 0,
+        total_withdrawn: user.total_withdrawn ?? 0,
+        xp: user.xp ?? 0,
+        level: user.level ?? 1,
       });
 
     } catch (err) {
@@ -61,7 +66,7 @@ export class WalletController {
   // POST /api/wallet/deposit
   static async deposit(req: Request, res: Response) {
     try {
-      const userId = (req as any).user?.id;
+      const userId = (req as AuthRequest).userId;
       if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
       const { amount } = req.body;
@@ -69,14 +74,13 @@ export class WalletController {
         return res.status(400).json({ error: "Valor inválido" });
       }
 
-      const id = crypto.randomUUID();
-
-      await prisma.transaction.create({
+      const transaction = await prisma.transaction.create({
         data: {
-          id,
-          userId, // ✔ CORRETO
+          userId,
           amount,
           type: "deposit",
+          status: "completed",
+          description: `Depósito de R$ ${amount.toFixed(2)}`,
         },
       });
 
@@ -88,7 +92,7 @@ export class WalletController {
         },
       });
 
-      return res.json({ success: true, id });
+      return res.json({ success: true, id: transaction.id });
 
     } catch (err) {
       console.error("[Wallet.deposit]", err);
@@ -96,10 +100,38 @@ export class WalletController {
     }
   }
 
-  // POST /api/wallet/withdraw
+  // GET /api/wallet/transactions
   static async getTransactions(req: Request, res: Response) {
     try {
-      const userId = (req as any).user?.id;
+      const userId = (req as AuthRequest).userId;
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+      const transactions = await prisma.transaction.findMany({
+        where: { userId },
+        orderBy: { created_at: "desc" },
+        take: 50,
+        select: {
+          id: true,
+          type: true,
+          amount: true,
+          description: true,
+          status: true,
+          created_at: true,
+        },
+      });
+
+      return res.json(transactions);
+
+    } catch (err) {
+      console.error("[Wallet.getTransactions]", err);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+
+  // POST /api/wallet/withdraw
+  static async withdraw(req: Request, res: Response) {
+    try {
+      const userId = (req as AuthRequest).userId;
       if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
       const { amount } = req.body;
@@ -118,14 +150,13 @@ export class WalletController {
         return res.status(400).json({ error: "Saldo insuficiente" });
       }
 
-      const id = crypto.randomUUID();
-
-      await prisma.transaction.create({
+      const transaction = await prisma.transaction.create({
         data: {
-          id,
-          userId, // ✔ CORRETO
+          userId,
           amount,
           type: "withdraw",
+          status: "completed",
+          description: `Saque de R$ ${amount.toFixed(2)}`,
         },
       });
 
@@ -137,7 +168,7 @@ export class WalletController {
         },
       });
 
-      return res.json({ success: true, id });
+      return res.json({ success: true, id: transaction.id });
 
     } catch (err) {
       console.error("[Wallet.withdraw]", err);

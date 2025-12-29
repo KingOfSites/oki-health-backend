@@ -1,8 +1,23 @@
 import { Router } from "express";
 import { authenticate, optionalAuthenticate } from "../middleware/auth";
 import { ChallengesController } from "../controllers/challenges.controller";
+import { ChallengeChatController } from "../controllers/challengeChat.controller";
 
 const challengeRoutes = Router();
+
+/* ============================================================
+🔥 0 — CHAT DO DESAFIO (deve vir antes de /:id/details)
+============================================================ */
+challengeRoutes.get(
+  "/:challengeId/chat",
+  authenticate,
+  ChallengeChatController.getMessages
+);
+challengeRoutes.post(
+  "/:challengeId/chat",
+  authenticate,
+  ChallengeChatController.sendMessage
+);
 
 /* ============================================================
 🔥 1 — DETALHES DO DESAFIO

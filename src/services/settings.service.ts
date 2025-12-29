@@ -9,6 +9,17 @@ export class SettingsService {
       select: {
         darkMode: true,
         notifications: true,
+        name: true,
+        age: true,
+        city: true,
+        email: true,
+        avatar_url: true,
+        sexo: true,
+        peso: true,
+        altura: true,
+        atividade: true,
+        xp: true,
+        level: true,
       },
     });
 
@@ -19,33 +30,76 @@ export class SettingsService {
     return {
       darkMode: user.darkMode ?? true,
       notifications: user.notifications ?? true,
+      name: user.name,
+      age: user.age,
+      city: user.city,
+      email: user.email,
+      avatar_url: user.avatar_url,
+      sexo: user.sexo,
+      peso: user.peso,
+      altura: user.altura,
+      atividade: user.atividade,
+      xp: user.xp,
+      level: user.level,
     };
   }
 
   // Atualizar configurações do usuário
   static async updateSettings(
     userId: string,
-    data: { darkMode?: boolean; notifications?: boolean }
+    data: {
+      darkMode?: boolean;
+      notifications?: boolean;
+      name?: string;
+      age?: number;
+      city?: string;
+      avatar_url?: string;
+      sexo?: "M" | "F";
+      peso?: number;
+      altura?: number;
+      atividade?: "sedentario" | "leve" | "moderado" | "intenso" | "muito_intenso";
+    }
   ) {
-    const user = await prisma.user.findUnique({
+    // Verificar se o usuário existe (apenas id para evitar referências circulares)
+    const userExists = await prisma.user.findUnique({
       where: { id: userId },
+      select: { id: true },
     });
 
-    if (!user) {
+    if (!userExists) {
       throw new AppError(404, "Usuário não encontrado");
     }
 
+    const updateData: any = {};
+    
+    if (data.darkMode !== undefined) updateData.darkMode = data.darkMode;
+    if (data.notifications !== undefined) updateData.notifications = data.notifications;
+    if (data.name !== undefined) updateData.name = data.name;
+    if (data.age !== undefined) updateData.age = data.age;
+    if (data.city !== undefined) updateData.city = data.city;
+    if (data.avatar_url !== undefined) updateData.avatar_url = data.avatar_url;
+    if (data.sexo !== undefined) updateData.sexo = data.sexo;
+    if (data.peso !== undefined) updateData.peso = data.peso;
+    if (data.altura !== undefined) updateData.altura = data.altura;
+    if (data.atividade !== undefined) updateData.atividade = data.atividade;
+
     const updated = await prisma.user.update({
       where: { id: userId },
-      data: {
-        ...(data.darkMode !== undefined && { darkMode: data.darkMode }),
-        ...(data.notifications !== undefined && {
-          notifications: data.notifications,
-        }),
-      },
+      data: updateData,
       select: {
         darkMode: true,
         notifications: true,
+        name: true,
+        age: true,
+        city: true,
+        email: true,
+        avatar_url: true,
+        sexo: true,
+        peso: true,
+        altura: true,
+        atividade: true,
+        xp: true,
+        level: true,
       },
     });
 
@@ -58,8 +112,10 @@ export class SettingsService {
     currentPassword: string,
     newPassword: string
   ) {
+    // Buscar apenas os campos necessários para evitar referências circulares
     const user = await prisma.user.findUnique({
       where: { id: userId },
+      select: { id: true, password: true },
     });
 
     if (!user) {

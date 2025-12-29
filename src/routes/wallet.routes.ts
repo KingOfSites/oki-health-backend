@@ -7,6 +7,13 @@ const router = Router();
 // rota existente:
 router.get("/", authenticate, WalletController.getWallet);
 
+// Rota para transações do usuário logado
+router.get("/transactions", authenticate, WalletController.getTransactions);
+
+// Rotas para depósito e saque
+router.post("/deposit", authenticate, WalletController.deposit);
+router.post("/withdraw", authenticate, WalletController.withdraw);
+
 // NOVA ROTA: carteira de tokens por usuário
 router.get("/:userId", authenticate, WalletController.getUserTokenWallet);
 

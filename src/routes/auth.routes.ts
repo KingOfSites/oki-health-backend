@@ -1,10 +1,3 @@
-console.log("signupSchema:", signupSchema);
-console.log("signinSchema:", signinSchema);
-console.log("updateProfileSchema:", updateProfileSchema);
-
-
-
-
 
 import { Router } from "express";
 import { AuthController } from "../controllers/auth.controller";

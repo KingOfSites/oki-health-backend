@@ -97,14 +97,29 @@ export class ChallengesController {
 // ================================
 static async searchChallenges(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const { location } = req.query;
+    const { location, filter } = req.query;
 
       // Se location for "all" ou vazio, retornar todos os desafios
       if (location === "all" || !location) {
         const userId = req.userId; // Pode ser undefined se não autenticado
         const challenges = await prisma.challenge.findMany({
-          include: {
-            participants: true,
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            category: true,
+            startDate: true,
+            endDate: true,
+            reward: true,
+            location: true,
+            coverUrl: true,
+            entryPriceCents: true,
+            created_at: true,
+            participants: {
+              select: {
+                userId: true,
+              },
+            },
           },
           orderBy: {
             created_at: "desc",
@@ -113,20 +128,22 @@ static async searchChallenges(req: AuthRequest, res: Response, next: NextFunctio
 
         return res.json({
           success: true,
-          challenges: challenges.map((c) => ({
-            id: c.id,
-            title: c.title,
-            description: c.description,
-            category: c.category,
-            start_date: c.startDate,
-            end_date: c.endDate,
-            reward: c.reward,
-            location: c.location,
-            cover_url: c.coverUrl,
-            entry_price_cents: c.entryPriceCents,
-            participants_count: c.participants.length,
-            is_participant: userId ? c.participants.some((p) => p.userId === userId) : false,
-          })),
+          data: {
+            challenges: challenges.map((c) => ({
+              id: c.id,
+              title: c.title,
+              description: c.description,
+              category: c.category,
+              start_date: c.startDate,
+              end_date: c.endDate,
+              reward: c.reward,
+              location: c.location,
+              cover_url: c.coverUrl,
+              entry_price_cents: c.entryPriceCents,
+              participants_count: c.participants.length,
+              is_participant: userId ? c.participants.some((p) => p.userId === userId) : false,
+            })),
+          },
         });
       }
 
@@ -144,8 +161,23 @@ static async searchChallenges(req: AuthRequest, res: Response, next: NextFunctio
             contains: String(location),
           },
         },
-        include: {
-          participants: true,
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          category: true,
+          startDate: true,
+          endDate: true,
+          reward: true,
+          location: true,
+          coverUrl: true,
+          entryPriceCents: true,
+          created_at: true,
+          participants: {
+            select: {
+              userId: true,
+            },
+          },
         },
         orderBy: {
           created_at: "desc",
@@ -154,20 +186,22 @@ static async searchChallenges(req: AuthRequest, res: Response, next: NextFunctio
 
       return res.json({
         success: true,
-        challenges: challenges.map((c) => ({
-          id: c.id,
-          title: c.title,
-          description: c.description,
-          category: c.category,
-          start_date: c.startDate,
-          end_date: c.endDate,
-          reward: c.reward,
-          location: c.location,
-          cover_url: c.coverUrl,
-          entry_price_cents: c.entryPriceCents,
-          participants_count: c.participants.length,
-          is_participant: userId ? c.participants.some((p) => p.userId === userId) : false,
-        })),
+        data: {
+          challenges: challenges.map((c) => ({
+            id: c.id,
+            title: c.title,
+            description: c.description,
+            category: c.category,
+            start_date: c.startDate,
+            end_date: c.endDate,
+            reward: c.reward,
+            location: c.location,
+            cover_url: c.coverUrl,
+            entry_price_cents: c.entryPriceCents,
+            participants_count: c.participants.length,
+            is_participant: userId ? c.participants.some((p) => p.userId === userId) : false,
+          })),
+        },
       });
     } catch (error) {
       return next(error);
@@ -227,43 +261,28 @@ static async searchChallenges(req: AuthRequest, res: Response, next: NextFunctio
   // ================================
   // ✔️ DETALHES DO DESAFIO
   // ================================
-static async getDetails(challengeId: string, userId: string) {
-  const challenge = await prisma.challenge.findUnique({
-    where: { id: challengeId },
-    include: {
-      participants: true,
-      createdBy: true,
-    },
-  });
+  static async getDetails(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      if (!req.userId) {
+        return res.status(401).json({ success: false, message: "Não autenticado" });
+      }
 
-  if (!challenge) return null;
+      const challengeId = req.params.id;
+      if (!challengeId) {
+        return res.status(400).json({ success: false, message: "ID do desafio não fornecido" });
+      }
 
-  const alreadyJoined = challenge.participants.some(
-    (p) => p.userId === userId
-  );
+      const data = await ChallengesService.getDetails(challengeId, req.userId);
+      
+      if (!data) {
+        return res.status(404).json({ success: false, message: "Desafio não encontrado" });
+      }
 
-  return {
-    id: challenge.id,
-    title: challenge.title,
-    description: challenge.description,
-    startDate: challenge.startDate,
-    endDate: challenge.endDate,
-    reward: challenge.reward,
-    location: challenge.location,
-    entryPriceCents: challenge.entryPriceCents,
-
-    participants: challenge.participants.map((p) => ({
-      userId: p.userId,
-    })),
-
-    alreadyJoined,
-    createdBy: {
-      name: challenge.createdBy?.name || "Criador",
-    },
-
-    status: challenge.status,
-  };
-}
+      return res.json({ success: true, data });
+    } catch (error) {
+      return next(error);
+    }
+  }
 
 
   // ================================

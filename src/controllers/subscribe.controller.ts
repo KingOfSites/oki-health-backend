@@ -553,12 +553,17 @@ export class SubscribeController {
         userId
       );
 
-      // Buscar TODOS os dados do usuário para debug completo
-      const userFull = await prisma.user.findUnique({
+      // Buscar apenas os campos necessários para evitar referências circulares
+      const user = await prisma.user.findUnique({
         where: { id: userId },
+        select: {
+          id: true,
+          email: true,
+          isPro: true,
+        },
       });
 
-      if (!userFull) {
+      if (!user) {
         console.log("❌ getMyStatus: Usuário não encontrado");
         return res.status(404).json({
           success: false,
@@ -567,17 +572,11 @@ export class SubscribeController {
         });
       }
 
-      console.log("🔍 getMyStatus: Usuário completo do banco:", {
-        id: userFull.id,
-        email: userFull.email,
-        isPro: (userFull as any).isPro,
-        isProType: typeof (userFull as any).isPro,
-      });
-
-      // Buscar o usuário e verificar o campo isPro diretamente
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { isPro: true } as any,
+      console.log("🔍 getMyStatus: Usuário do banco:", {
+        id: user.id,
+        email: user.email,
+        isPro: user.isPro,
+        isProType: typeof user.isPro,
       });
 
       // Query SQL direta para garantir que estamos pegando o valor correto
@@ -599,7 +598,7 @@ export class SubscribeController {
       // Verificar explicitamente se isPro é true (1) ou false (0)
       // Usar o valor da query SQL direta se disponível, senão usar o Prisma
       const isProValue =
-        rawIsPro !== undefined ? rawIsPro : (user as any).isPro;
+        rawIsPro !== undefined ? rawIsPro : user.isPro;
 
       // Converter para boolean de forma explícita e segura
       // Aceita apenas: true, 1 como verdadeiro
@@ -641,7 +640,15 @@ export class SubscribeController {
             gte: new Date(),
           },
         },
-        include: { plan: true },
+        select: {
+          id: true,
+          endDate: true,
+          plan: {
+            select: {
+              name: true,
+            },
+          },
+        },
         orderBy: { endDate: "desc" },
       });
 
@@ -673,7 +680,14 @@ export class SubscribeController {
           active: true,
           endDate: { gte: new Date() },
         },
-        include: { plan: true },
+        select: {
+          id: true,
+          plan: {
+            select: {
+              name: true,
+            },
+          },
+        },
       });
 
       return res.json({

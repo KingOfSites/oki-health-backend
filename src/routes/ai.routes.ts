@@ -32,14 +32,17 @@ router.post("/nutrition", authenticate, async (req, res) => {
     // Verificar se usuário é PRO
     const prisma = (await import("../config/database")).default;
     
-    // Buscar TODOS os dados do usuário para debug
+    // Buscar apenas os campos necessários para evitar referências circulares
     const userFull = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, email: true, name: true, isPro: true } as any
+      select: { id: true, email: true, name: true, isPro: true },
     });
 
-    console.log("🔍 [AI Route] Usuário completo do banco:", JSON.stringify(userFull, null, 2));
-    console.log("🔍 [AI Route] isPro do usuário completo:", (userFull as any)?.isPro);
+    console.log("🔍 [AI Route] Usuário do banco:", {
+      id: userFull?.id,
+      email: userFull?.email,
+      isPro: userFull?.isPro,
+    });
     
     // Verificar se o userId do token corresponde a um usuário real no banco
     if (!userFull) {

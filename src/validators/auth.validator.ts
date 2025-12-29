@@ -32,6 +32,19 @@ export const signinSchema = z.object({
 
 export const updateProfileSchema = z.object({
   body: z.object({
-    name: z.string().optional(),
+    name: z.string().min(2).optional(),
+    age: z.number().int().min(10).max(120).optional(),
+    city: z.string().min(2).optional(),
+    avatar_url: z.string().url().optional().nullable(),
+    sexo: z.enum(["M", "F"]).optional(),
+    peso: z.number().min(20).max(400).optional(),
+    altura: z.number().min(50).max(270).optional(),
+    atividade: z.enum([
+      "sedentario",
+      "leve",
+      "moderado",
+      "intenso",
+      "muito_intenso",
+    ]).optional(),
   }),
 });

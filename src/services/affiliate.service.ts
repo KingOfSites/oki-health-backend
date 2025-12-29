@@ -113,9 +113,10 @@ export class AffiliateService {
 
   // Registrar referral no signup
   static async registerReferral(referredUserId: string, affiliateCode: string) {
-    // Encontrar o usuário que fez a indicação
+    // Encontrar o usuário que fez a indicação (apenas id para evitar referências circulares)
     const referrer = await prisma.user.findUnique({
       where: { affiliateCode: affiliateCode },
+      select: { id: true },
     });
 
     if (!referrer) {
@@ -165,9 +166,10 @@ export class AffiliateService {
       throw new Error("Você já está vinculado a um afiliado");
     }
 
-    // Encontrar o usuário que fez a indicação
+    // Encontrar o usuário que fez a indicação (apenas id para evitar referências circulares)
     const referrer = await prisma.user.findUnique({
       where: { affiliateCode: affiliateCode.toUpperCase().trim() },
+      select: { id: true },
     });
 
     if (!referrer) {
@@ -280,6 +282,215 @@ export class AffiliateService {
     });
 
     return commission;
+  }
+
+  // Listar todas as indicações (referrals) do afiliado
+  static async getReferrals(userId: string, filters?: { status?: string; source?: string; limit?: number; offset?: number }) {
+    const where: any = {
+      referrerId: userId,
+    };
+
+    if (filters?.status) {
+      where.status = filters.status;
+    }
+
+    if (filters?.source) {
+      where.source = filters.source;
+    }
+
+    // Buscar referrals sem include para evitar referências circulares
+    const referrals = await prisma.referral.findMany({
+      where,
+      select: {
+        id: true,
+        referrerId: true,
+        referredUserId: true,
+        commission: true,
+        commissionRate: true,
+        status: true,
+        source: true,
+        created_at: true,
+        paid_at: true,
+      },
+      orderBy: {
+        created_at: "desc",
+      },
+      take: filters?.limit || 50,
+      skip: filters?.offset || 0,
+    });
+
+    // Buscar informações dos usuários indicados
+    const referralsWithUserInfo = await Promise.all(
+      referrals.map(async (referral) => {
+        const referredUser = await prisma.user.findUnique({
+          where: { id: referral.referredUserId },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            avatar_url: true,
+            created_at: true,
+            planSubscription: {
+              select: {
+                active: true,
+                plan: {
+                  select: {
+                    name: true,
+                    price: true,
+                  },
+                },
+              },
+            },
+          },
+        });
+
+        return {
+          id: referral.id,
+          referredUser: referredUser || null,
+          commission: referral.commission,
+          commissionRate: referral.commissionRate,
+          status: referral.status,
+          source: referral.source,
+          created_at: referral.created_at,
+          paid_at: referral.paid_at,
+        };
+      })
+    );
+
+    const total = await prisma.referral.count({ where });
+
+    return {
+      referrals: referralsWithUserInfo,
+      total,
+      limit: filters?.limit || 50,
+      offset: filters?.offset || 0,
+    };
+  }
+
+  // Obter histórico de pagamentos
+  static async getPaymentHistory(userId: string, limit: number = 20, offset: number = 0) {
+    // Buscar sem include para evitar referências circulares
+    const paidReferrals = await prisma.referral.findMany({
+      where: {
+        referrerId: userId,
+        status: "paid",
+      },
+      select: {
+        id: true,
+        referrerId: true,
+        referredUserId: true,
+        commission: true,
+        paid_at: true,
+        source: true,
+      },
+      orderBy: {
+        paid_at: "desc",
+      },
+      take: limit,
+      skip: offset,
+    });
+
+    const referralsWithUserInfo = await Promise.all(
+      paidReferrals.map(async (referral) => {
+        const referredUser = await prisma.user.findUnique({
+          where: { id: referral.referredUserId },
+          select: {
+            name: true,
+            email: true,
+          },
+        });
+
+        return {
+          id: referral.id,
+          referredUser: referredUser || null,
+          commission: referral.commission,
+          paid_at: referral.paid_at,
+          source: referral.source,
+        };
+      })
+    );
+
+    const total = await prisma.referral.count({
+      where: {
+        referrerId: userId,
+        status: "paid",
+      },
+    });
+
+    return {
+      payments: referralsWithUserInfo,
+      total,
+      limit,
+      offset,
+    };
+  }
+
+  // Obter estatísticas detalhadas (últimos 30 dias, etc)
+  static async getDetailedStats(userId: string) {
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    // Referrals dos últimos 30 dias
+    const recentReferrals = await prisma.referral.count({
+      where: {
+        referrerId: userId,
+        created_at: {
+          gte: thirtyDaysAgo,
+        },
+      },
+    });
+
+    // Ganhos dos últimos 30 dias
+    const recentEarnings = await prisma.referral.aggregate({
+      where: {
+        referrerId: userId,
+        created_at: {
+          gte: thirtyDaysAgo,
+        },
+        status: { in: ["pending", "paid"] },
+      },
+      _sum: {
+        commission: true,
+      },
+    });
+
+    // Taxa de conversão (usuários com premium / total de referrals)
+    const totalReferrals = await prisma.user.count({
+      where: { referredBy: userId },
+    });
+
+    const conversions = await prisma.user.count({
+      where: {
+        referredBy: userId,
+        planSubscription: {
+          active: true,
+        },
+      },
+    });
+
+    const conversionRate = totalReferrals > 0 ? (conversions / totalReferrals) * 100 : 0;
+
+    // Ganhos por fonte
+    const earningsBySource = await prisma.referral.groupBy({
+      by: ["source"],
+      where: {
+        referrerId: userId,
+        status: { in: ["pending", "paid"] },
+      },
+      _sum: {
+        commission: true,
+      },
+    });
+
+    return {
+      recentReferrals,
+      recentEarnings: recentEarnings._sum.commission || 0,
+      conversionRate: Math.round(conversionRate * 100) / 100,
+      earningsBySource: earningsBySource.map((item) => ({
+        source: item.source || "unknown",
+        total: item._sum.commission || 0,
+      })),
+    };
   }
 }
 

@@ -55,16 +55,23 @@ router.post("/upload", authenticate, upload.single("file"), async (req, res) => 
     // Tornar o arquivo público para acesso via URL
     await fileUpload.makePublic();
 
-    // Obter URL pública do Firebase Storage
-    const url = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+    // Obter URL pública do Firebase Storage (formato firebasestorage.googleapis.com)
+    // Este é o formato oficial de URL pública do Firebase Storage
+    const encodedFileName = encodeURIComponent(fileName);
+    const url = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodedFileName}?alt=media`;
     
     console.log(`[Chat Upload] ✅ Upload concluído no Firebase Storage!`);
-    console.log(`[Chat Upload] 🔗 URL pública: ${url}`);
+    console.log(`[Chat Upload] 🔗 URL pública do Firebase: ${url}`);
+    console.log(`[Chat Upload] 📦 Bucket do Firebase: ${bucket.name}`);
+    console.log(`[Chat Upload] 📁 Arquivo salvo em: ${fileName}`);
 
     return res.json({ 
       url,
       success: true,
-      message: "Imagem salva no Firebase Storage com sucesso"
+      message: "Imagem salva no Firebase Storage com sucesso",
+      firebase: true,
+      bucket: bucket.name,
+      path: fileName
     });
 
   } catch (err: any) {

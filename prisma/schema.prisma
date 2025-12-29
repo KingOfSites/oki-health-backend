@@ -49,7 +49,7 @@ model User {
   planSubscription  PlanSubscription?
   posts             ChallengePost[]
   chatMessages      ChallengeChat[]
-  referralEarnings  Referral[]
+  referralEarnings  Referral[] @relation("UserReferralEarnings")
 
   @@map("users")
 }
@@ -197,7 +197,7 @@ model Referral {
   created_at     DateTime  @default(now())
   paid_at        DateTime?
 
-  referrer User @relation(fields: [referrerId], references: [id])
+  referrer User @relation("UserReferralEarnings", fields: [referrerId], references: [id])
 
   @@index([referrerId])
   @@index([referredUserId])

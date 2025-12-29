@@ -7,9 +7,19 @@ export const GamificationController = {
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      include: {
-        achievements: true,
-        challenges: true,
+      select: {
+        id: true,
+        xp: true,
+        achievements: {
+          select: {
+            title: true,
+          },
+        },
+        challenges: {
+          select: {
+            progress: true,
+          },
+        },
       },
     });
 

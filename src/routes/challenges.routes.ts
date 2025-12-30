@@ -2,6 +2,7 @@ import { Router } from "express";
 import { authenticate, optionalAuthenticate } from "../middleware/auth";
 import { ChallengesController } from "../controllers/challenges.controller";
 import { ChallengeChatController } from "../controllers/challengeChat.controller";
+import { ChallengeRankingController } from "../controllers/challengeRanking.controller";
 
 const challengeRoutes = Router();
 
@@ -74,6 +75,24 @@ challengeRoutes.delete(
   "/:id",
   authenticate,
   ChallengesController.deleteChallenge
+);
+
+/* ============================================================
+🔥 8 — RANKING DO DESAFIO
+============================================================ */
+challengeRoutes.get(
+  "/:challengeId/ranking",
+  authenticate,
+  ChallengeRankingController.getRanking
+);
+
+/* ============================================================
+🔥 9 — DISTRIBUIR PRÊMIOS (apenas criador)
+============================================================ */
+challengeRoutes.post(
+  "/:challengeId/distribute-prizes",
+  authenticate,
+  ChallengeRankingController.distributePrizes
 );
 
 export default challengeRoutes;

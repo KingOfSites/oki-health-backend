@@ -271,4 +271,441 @@ FORMATO EXATO:
   }
 });
 
+// ====================================
+// 🔥 POST /api/ai/verify-gym (VERIFICAR ACADEMIA)
+// ====================================
+router.post("/verify-gym", authenticate, async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const { imageUrl, challengeId, messageId } = req.body;
+
+    if (!userId) {
+      return res.status(401).json({ error: "Usuário não autenticado" });
+    }
+
+    if (!imageUrl) {
+      return res.status(400).json({ error: "URL da imagem não enviada" });
+    }
+
+    console.log("🏋️ [AI Verify Gym] Iniciando verificação de academia...");
+    console.log("🏋️ [AI Verify Gym] imageUrl:", imageUrl.substring(0, 50) + "...");
+    console.log("🏋️ [AI Verify Gym] challengeId:", challengeId);
+    console.log("🏋️ [AI Verify Gym] messageId:", messageId);
+
+    // Buscar informações completas do desafio e da mensagem
+    const prisma = (await import("../config/database")).default;
+    let challengeInfo = null;
+    let messageInfo = null;
+    
+    if (challengeId) {
+      try {
+        // Buscar informações completas do desafio
+        challengeInfo = await prisma.$queryRawUnsafe(
+          `SELECT id, title, description, startDate, endDate, category FROM challenges WHERE id = ?`,
+          challengeId
+        ) as any[];
+      } catch (err) {
+        console.warn("⚠️ [AI Verify Gym] Erro ao buscar desafio:", err);
+      }
+    }
+
+    // Buscar informações da mensagem (horário de criação)
+    if (messageId) {
+      try {
+        messageInfo = await prisma.$queryRawUnsafe(
+          `SELECT id, created_at FROM challenge_chat WHERE id = ?`,
+          messageId
+        ) as any[];
+      } catch (err) {
+        console.warn("⚠️ [AI Verify Gym] Erro ao buscar mensagem:", err);
+      }
+    }
+
+    const challenge = challengeInfo?.[0];
+    const message = messageInfo?.[0];
+    
+    // Horário de criação da mensagem (timestamp que aparece abaixo da imagem no chat)
+    const messageCreatedAt = message?.created_at ? new Date(message.created_at) : new Date();
+    const messageTime = messageCreatedAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+    const messageDate = messageCreatedAt.toLocaleDateString("pt-BR");
+
+    // Extrair informações de horário do título/descrição do desafio
+    let challengeTimeInfo = "";
+    let expectedTimeRange = "";
+    let extractedTimes: string[] = [];
+    
+    if (challenge) {
+      const title = challenge.title || "";
+      const description = challenge.description || "";
+      const fullText = `${title} ${description}`;
+      
+      // Procurar por padrões de horário no texto (case insensitive)
+      const timePatterns = [
+        { pattern: /\b(\d{1,2})[h:](\d{2})\s*às?\s*(\d{1,2})[h:](\d{2})\b/gi, format: (m: RegExpMatchArray) => `${m[1]}h${m[2]} às ${m[3]}h${m[4]}` },
+        { pattern: /\b(\d{1,2})[h:](\d{2})\b/g, format: (m: RegExpMatchArray) => `${m[1]}h${m[2]}` },
+        { pattern: /\b(\d{1,2})h\b/g, format: (m: RegExpMatchArray) => `${m[1]}h` },
+        { pattern: /\bàs?\s*(\d{1,2})[h:](\d{2})\b/gi, format: (m: RegExpMatchArray) => `às ${m[1]}h${m[2]}` },
+      ];
+      
+      timePatterns.forEach(({ pattern, format }) => {
+        const matches = fullText.matchAll(pattern);
+        for (const match of matches) {
+          const formatted = format(match);
+          if (!extractedTimes.includes(formatted)) {
+            extractedTimes.push(formatted);
+          }
+        }
+      });
+      
+      // Procurar por períodos do dia
+      const periodPatterns = [
+        { pattern: /\bmanhã\b/gi, label: "manhã" },
+        { pattern: /\btarde\b/gi, label: "tarde" },
+        { pattern: /\bnoite\b/gi, label: "noite" },
+        { pattern: /\bmadrugada\b/gi, label: "madrugada" },
+      ];
+      
+      const foundPeriods: string[] = [];
+      periodPatterns.forEach(({ pattern, label }) => {
+        if (pattern.test(fullText) && !foundPeriods.includes(label)) {
+          foundPeriods.push(label);
+        }
+      });
+      
+      if (extractedTimes.length > 0) {
+        challengeTimeInfo = `Horários mencionados no desafio: ${extractedTimes.join(", ")}`;
+      } else if (foundPeriods.length > 0) {
+        challengeTimeInfo = `Período mencionado no desafio: ${foundPeriods.join(", ")}`;
+      }
+      
+      // Determinar período do dia baseado no horário da mensagem
+      const messageHour = messageCreatedAt.getHours();
+      let timeOfDay = "";
+      if (messageHour >= 5 && messageHour < 12) {
+        timeOfDay = "manhã";
+      } else if (messageHour >= 12 && messageHour < 18) {
+        timeOfDay = "tarde";
+      } else if (messageHour >= 18 && messageHour < 24) {
+        timeOfDay = "noite";
+      } else {
+        timeOfDay = "madrugada";
+      }
+      
+      expectedTimeRange = `A mensagem foi enviada às ${messageTime} do dia ${messageDate} (${timeOfDay})`;
+    }
+
+    // Construir informações do desafio para o prompt
+    const challengeContext = challenge ? `
+    INFORMAÇÕES DO DESAFIO:
+    - Título: ${challenge.title}
+    - Descrição: ${challenge.description}
+    - Período: ${challenge.startDate ? new Date(challenge.startDate).toLocaleDateString("pt-BR") : "N/A"} até ${challenge.endDate ? new Date(challenge.endDate).toLocaleDateString("pt-BR") : "N/A"}
+    ${challengeTimeInfo ? `- Horários do desafio: ${challengeTimeInfo}` : ""}
+    ${expectedTimeRange ? `- Faixa de horário esperada: ${expectedTimeRange}` : ""}
+    ` : "";
+    
+    // PROMPT DA IA — VERIFICAÇÃO DE FOTO EM ACADEMIA
+    const prompt = `
+    Você é um sistema rigoroso de validação de fotos para desafios fitness com recompensa.
+    
+    Sua tarefa é analisar **APENAS a imagem enviada** e decidir se ela é **válida ou inválida** para um desafio de academia.
+    
+    ⚠️ REGRA PRINCIPAL:
+    Se houver QUALQUER DÚVIDA, inconsistência ou falta de evidência clara → REJEITE.
+    
+    ---
+    
+    ### CRITÉRIOS OBRIGATÓRIOS (TODOS DEVEM SER ATENDIDOS):
+    
+    1️⃣ A imagem foi tirada DENTRO de uma academia real:
+    - Presença clara de equipamentos de academia (máquinas, halteres, barras, anilhas, esteiras, racks, etc.)
+    - Ambiente típico de academia (espelhos grandes, piso de borracha, iluminação artificial, layout comercial)
+    
+    2️⃣ Evidências de que a foto NÃO é:
+    - Uma selfie em casa
+    - Um parque, rua ou ambiente externo
+    - Um print de tela, imagem reciclada, foto antiga ou de rede social
+    - Uma imagem editada ou claramente reaproveitada
+    
+    3️⃣ Evidências de atualidade:
+    - Aparência espontânea (não posada demais, não promocional)
+    - Iluminação e qualidade compatíveis com uma foto casual de celular
+    - Ausência de marcas de print (bordas, overlays, textos, UI de apps)
+    
+    4️⃣ Presença humana:
+    - Deve existir ao menos uma pessoa visível OU reflexo realista em espelho
+    - Rejeite imagens apenas do ambiente vazio
+    
+    ---
+    
+    ${challengeContext}
+    
+    ⏰ IMPORTANTE SOBRE HORÁRIO:
+    - NÃO tente verificar horário pela imagem
+    - O horário será validado separadamente pelo timestamp da mensagem (${messageTime} do dia ${messageDate})
+    
+    ---
+    
+    ⛔ FORMATO DE RESPOSTA (OBRIGATÓRIO):
+    Retorne **APENAS JSON PURO**, sem texto extra, sem markdown.
+    
+    {
+      "isGym": true ou false,
+      "confidence": número entre 0.0 e 1.0,
+      "reason": "Motivo curto, objetivo e técnico",
+      "verified": true ou false
+    }
+    
+    ### REGRAS FINAIS:
+    - "verified" só pode ser true se **TODOS os critérios forem claramente atendidos**
+    - Se confidence < 0.75 → verified deve ser false
+    - Em caso de dúvida → verified = false
+    `;
+    
+
+    // Baixar a imagem da URL e converter para base64
+    let imageBase64: string;
+    try {
+      const imageResponse = await fetch(imageUrl);
+      if (!imageResponse.ok) {
+        throw new Error("Erro ao baixar imagem");
+      }
+      const imageBuffer = await imageResponse.arrayBuffer();
+      imageBase64 = Buffer.from(imageBuffer).toString("base64");
+    } catch (err) {
+      console.error("❌ [AI Verify Gym] Erro ao baixar imagem:", err);
+      return res.status(400).json({ 
+        error: "Erro ao processar imagem",
+        verified: false,
+        reason: "Não foi possível baixar a imagem para análise"
+      });
+    }
+
+    // Chamar a API da OpenAI
+    const result = await client.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        {
+          role: "system",
+          content: prompt
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "image_url",
+              image_url: {
+                url: `data:image/jpeg;base64,${imageBase64}`
+              }
+            },
+            {
+              type: "text",
+              text: `Analise se esta foto foi tirada em uma academia. O horário será verificado separadamente usando o timestamp da mensagem (${messageDate} às ${messageTime}).\n${challengeContext}`
+            }
+          ]
+        }
+      ],
+      max_tokens: 500,
+    });
+
+    const aiText = result.choices[0]?.message?.content;
+
+    if (!aiText) {
+      return res.status(500).json({
+        error: "A IA não retornou texto",
+        verified: false,
+        reason: "Erro na análise da IA"
+      });
+    }
+
+    // Limpar e parsear JSON
+    let clean = aiText.trim();
+    clean = clean.replace(/```json/gi, "");
+    clean = clean.replace(/```/g, "");
+    clean = clean.replace(/`/g, "");
+
+    const firstBrace = clean.indexOf("{");
+    const lastBrace = clean.lastIndexOf("}");
+
+    if (firstBrace === -1 || lastBrace === -1) {
+      return res.status(500).json({
+        error: "IA não retornou JSON válido",
+        verified: false,
+        reason: "Resposta da IA inválida"
+      });
+    }
+
+    clean = clean.substring(firstBrace, lastBrace + 1);
+
+    let json: any;
+    try {
+      json = JSON.parse(clean);
+    } catch (err) {
+      console.error("❌ [AI Verify Gym] Erro ao parsear JSON:", clean);
+      return res.status(500).json({
+        error: "JSON inválido retornado pela IA",
+        verified: false,
+        reason: "Erro ao processar resposta da IA"
+      });
+    }
+
+    console.log("✅ [AI Verify Gym] Verificação concluída:", json);
+    console.log("🕐 [AI Verify Gym] Horários extraídos do desafio:", extractedTimes);
+    console.log("🕐 [AI Verify Gym] Horário da mensagem:", messageTime);
+
+    // Verificação adicional: comparar horário da mensagem com horário esperado
+    let timeVerification = true;
+    let timeVerificationReason = "";
+    
+    if (challenge && message) {
+      const messageHour = messageCreatedAt.getHours();
+      const messageMinute = messageCreatedAt.getMinutes();
+      const messageTimeMinutes = messageHour * 60 + messageMinute;
+      
+      // Verificar se a mensagem foi enviada durante o período do desafio (datas)
+      const startDate = new Date(challenge.startDate);
+      const endDate = new Date(challenge.endDate);
+      
+      console.log("📅 [AI Verify Gym] Período do desafio:", startDate.toLocaleDateString("pt-BR"), "até", endDate.toLocaleDateString("pt-BR"));
+      console.log("📅 [AI Verify Gym] Data da mensagem:", messageDate);
+      
+      if (messageCreatedAt < startDate || messageCreatedAt > endDate) {
+        timeVerification = false;
+        timeVerificationReason = `Mensagem enviada fora do período do desafio (${startDate.toLocaleDateString("pt-BR")} até ${endDate.toLocaleDateString("pt-BR")})`;
+        console.log("❌ [AI Verify Gym] Mensagem fora do período do desafio");
+      } else if (extractedTimes.length > 0) {
+        // Se há horários específicos mencionados, verificar se o horário da mensagem está próximo
+        let matchesTime = false;
+        const tolerance = 60; // 1 hora de tolerância
+        
+        console.log("🕐 [AI Verify Gym] Verificando horários específicos...");
+        
+        for (const timeStr of extractedTimes) {
+          // Extrair horários do formato "18h30" ou "18h30 às 20h"
+          const timeMatch = timeStr.match(/(\d{1,2})h(\d{2})?/g);
+          if (timeMatch) {
+            for (const time of timeMatch) {
+              const parts = time.replace("h", ":").split(":");
+              const hour = parseInt(parts[0]);
+              const minute = parts[1] ? parseInt(parts[1]) : 0;
+              const timeMinutes = hour * 60 + minute;
+              
+              console.log(`🕐 [AI Verify Gym] Comparando: ${messageTimeMinutes}min (${messageTime}) vs ${timeMinutes}min (${hour}h${minute.toString().padStart(2, "0")})`);
+              
+              // Verificar se está dentro da tolerância
+              if (Math.abs(messageTimeMinutes - timeMinutes) <= tolerance) {
+                matchesTime = true;
+                console.log("✅ [AI Verify Gym] Horário corresponde!");
+                break;
+              }
+            }
+          }
+          if (matchesTime) break;
+        }
+        
+        if (!matchesTime) {
+          timeVerification = false;
+          timeVerificationReason = `Horário da mensagem (${messageTime}) não corresponde aos horários do desafio (${extractedTimes.join(", ")})`;
+          console.log("❌ [AI Verify Gym] Horário não corresponde aos horários do desafio");
+        } else {
+          console.log("✅ [AI Verify Gym] Horário corresponde aos horários do desafio");
+        }
+      } else {
+        console.log("ℹ️ [AI Verify Gym] Nenhum horário específico encontrado no desafio, apenas verificando período");
+      }
+    }
+    
+    // Verificação final: combinar resultado da IA (se é academia) com verificação de horário (timestamp da mensagem)
+    // A IA só verifica se é academia, o horário é verificado usando o timestamp da mensagem
+    const finalVerified = (json.verified || false) && timeVerification;
+
+    // Atualizar status da mensagem no banco se messageId foi fornecido
+    if (messageId && challengeId) {
+      try {
+        const status = finalVerified ? "verified" : "rejected";
+        const verifiedAt = finalVerified ? new Date() : null;
+        const finalReason = timeVerificationReason || json.reason || "";
+        
+        await prisma.$executeRawUnsafe(
+          `UPDATE challenge_chat 
+           SET verificationStatus = ?, 
+               verifiedAt = ?, 
+               verificationReason = ? 
+           WHERE id = ?`,
+          status,
+          verifiedAt,
+          finalReason,
+          messageId
+        );
+        
+        console.log("✅ [AI Verify Gym] Status atualizado no banco:", status);
+        
+        // Se a foto foi verificada, adicionar pontos ao participante
+        if (finalVerified && userId) {
+          try {
+            // Verificar se o participante existe
+            const participant = await prisma.$queryRawUnsafe(
+              `SELECT id FROM challenge_participants WHERE userId = ? AND challengeId = ?`,
+              userId,
+              challengeId
+            ) as any[];
+            
+            if (participant && participant.length > 0) {
+              // Adicionar 10 pontos por foto verificada
+              const pointsToAdd = 10;
+              await prisma.$executeRawUnsafe(
+                `UPDATE challenge_participants 
+                 SET points = points + ? 
+                 WHERE userId = ? AND challengeId = ?`,
+                pointsToAdd,
+                userId,
+                challengeId
+              );
+              console.log(`✅ [AI Verify Gym] ${pointsToAdd} pontos adicionados ao participante`);
+            }
+          } catch (pointsErr) {
+            console.error("⚠️ [AI Verify Gym] Erro ao adicionar pontos:", pointsErr);
+            // Não falhar a requisição se não conseguir adicionar pontos
+          }
+        }
+      } catch (err) {
+        console.error("⚠️ [AI Verify Gym] Erro ao atualizar status no banco:", err);
+        // Não falhar a requisição se não conseguir atualizar o banco
+      }
+    }
+
+    // Construir mensagem de motivo combinada
+    let finalReason = "";
+    if (!timeVerification) {
+      finalReason = timeVerificationReason || "";
+    }
+    if (!json.verified && json.reason) {
+      finalReason = finalReason ? `${finalReason}. ${json.reason}` : json.reason;
+    }
+    if (finalVerified) {
+      finalReason = "Foto verificada: é academia e foi enviada no horário correto do desafio.";
+    }
+
+    return res.json({
+      success: true,
+      verified: finalVerified,
+      isGym: json.isGym || false,
+      matchesChallengeTime: timeVerification,
+      confidence: json.confidence || 0,
+      reason: finalReason || "Verificação concluída",
+      timeVerification: timeVerification,
+      aiVerification: json.verified || false,
+    });
+
+  } catch (err: any) {
+    console.error("❌ [AI Verify Gym] Erro:", err);
+    return res.status(500).json({
+      error: "Erro interno na verificação",
+      verified: false,
+      reason: err?.message || "Erro desconhecido",
+      details: err?.message || String(err)
+    });
+  }
+});
+
 export default router;

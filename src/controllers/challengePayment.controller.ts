@@ -38,13 +38,6 @@ export class ChallengePaymentController {
           .json({ success: false, message: "Tipo de pagamento não informado" });
       }
 
-      if (!mpAccessToken) {
-        return res.status(500).json({
-          success: false,
-          message: "Configuração de pagamento indisponível",
-        });
-      }
-
       // Buscar desafio
       const challenge = await prisma.challenge.findUnique({
         where: { id: challengeId },
@@ -76,6 +69,77 @@ export class ChallengePaymentController {
         return res.json({
           success: true,
           message: "Pagamento já realizado anteriormente",
+        });
+      }
+
+      // ======================================================
+      // 💰 PAGAMENTO COM CARTEIRA
+      // ======================================================
+      if (type === "wallet") {
+        // Buscar saldo do usuário
+        const user = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { balance: true },
+        });
+
+        if (!user) {
+          return res.status(404).json({
+            success: false,
+            message: "Usuário não encontrado",
+          });
+        }
+
+        if (user.balance < amount) {
+          return res.status(400).json({
+            success: false,
+            message: `Saldo insuficiente. Você tem R$ ${user.balance.toFixed(2)} e precisa de R$ ${amount.toFixed(2)}`,
+          });
+        }
+
+        // Debitar da carteira
+        await prisma.user.update({
+          where: { id: userId },
+          data: {
+            balance: { decrement: amount },
+          },
+        });
+
+        // Criar transação
+        const transaction = await prisma.transaction.create({
+          data: {
+            userId,
+            challengeId,
+            type: "challenge_entry",
+            amount,
+            status: "approved",
+            description: `Entrada no desafio: ${challenge.title}`,
+          },
+        });
+
+        // Inscrever usuário no desafio
+        await prisma.challengeParticipant.create({
+          data: {
+            userId,
+            challengeId,
+            progress: 0,
+            points: 0,
+          },
+        });
+
+        return res.json({
+          success: true,
+          message: "Pagamento realizado com sucesso!",
+          transactionId: transaction.id,
+        });
+      }
+
+      // ======================================================
+      // 💳 PAGAMENTO COM PIX/CARTÃO (Mercado Pago)
+      // ======================================================
+      if (!mpAccessToken) {
+        return res.status(500).json({
+          success: false,
+          message: "Configuração de pagamento indisponível",
         });
       }
 
@@ -230,7 +294,7 @@ export class ChallengePaymentController {
         // Se aprovado, inscrever usuário no desafio
         if (payment.status === "approved") {
           await prisma.challengeParticipant.create({
-            data: { userId, challengeId, progress: 0 },
+            data: { userId, challengeId, progress: 0, points: 0 },
           });
         }
 
@@ -310,6 +374,7 @@ export class ChallengePaymentController {
           userId: transaction.userId,
           challengeId: transaction.challengeId!,
           progress: 0,
+          points: 0,
         },
       });
 

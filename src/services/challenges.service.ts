@@ -332,6 +332,7 @@ export class ChallengesService {
         userId,
         challengeId,
         progress: 0,
+        points: 0,
       },
     });
 

@@ -10,7 +10,7 @@ export class ChallengeChatController {
     try {
       const { challengeId } = req.params;
 
-      // Tentar buscar mensagens incluindo imageUrl
+      // Tentar buscar mensagens incluindo imageUrl e campos de verificação
       let messages: any[];
       try {
         messages = await prisma.$queryRawUnsafe(
@@ -21,6 +21,9 @@ export class ChallengeChatController {
             c.message,
             c.imageUrl,
             c.created_at,
+            c.verificationStatus,
+            c.verifiedAt,
+            c.verificationReason,
             u.name as user_name,
             u.avatar_url
            FROM challenge_chat c
@@ -30,8 +33,28 @@ export class ChallengeChatController {
           challengeId
         ) as any[];
       } catch (err: any) {
-        // Se falhar (coluna imageUrl não existe), buscar sem imageUrl
-        if (err.code === "P2010" || err.meta?.code === "1054" || err.message?.includes("imageUrl")) {
+        // Se falhar (colunas não existem), tentar buscar sem campos de verificação
+        if (err.code === "P2010" || err.meta?.code === "1054" || err.message?.includes("verificationStatus") || err.message?.includes("imageUrl")) {
+          try {
+            messages = await prisma.$queryRawUnsafe(
+              `SELECT 
+                c.id,
+                c.userId,
+                c.challengeId,
+                c.message,
+                c.imageUrl,
+                c.created_at,
+                u.name as user_name,
+                u.avatar_url
+               FROM challenge_chat c
+               JOIN users u ON c.userId = u.id
+               WHERE c.challengeId = ?
+               ORDER BY c.created_at ASC`,
+              challengeId
+            ) as any[];
+          } catch (err2: any) {
+            // Se ainda falhar, buscar sem imageUrl
+            if (err2.message?.includes("imageUrl")) {
           messages = await prisma.$queryRawUnsafe(
             `SELECT 
               c.id,
@@ -47,6 +70,10 @@ export class ChallengeChatController {
              ORDER BY c.created_at ASC`,
             challengeId
           ) as any[];
+            } else {
+              throw err2;
+            }
+          }
         } else {
           throw err;
         }
@@ -61,6 +88,9 @@ export class ChallengeChatController {
         message: msg.message,
         imageUrl: msg.imageUrl ?? null,
         created_at: msg.created_at,
+        verificationStatus: msg.verificationStatus ?? "pending",
+        verifiedAt: msg.verifiedAt ?? null,
+        verificationReason: msg.verificationReason ?? null,
       }));
 
       return res.json({ data: formatted });
@@ -90,12 +120,12 @@ export class ChallengeChatController {
       const messageId = require("crypto").randomUUID();
       
       if (imageUrl) {
-        // Tentar inserir com imageUrl (URL do Firebase)
+        // Tentar inserir com imageUrl e campos de verificação (URL do Firebase)
         console.log(`[Chat] Tentando salvar mensagem com imagem: ${imageUrl.substring(0, 50)}...`);
         try {
           await prisma.$executeRawUnsafe(
-            `INSERT INTO challenge_chat (id, userId, challengeId, message, imageUrl, created_at) 
-             VALUES (?, ?, ?, ?, ?, NOW())`,
+            `INSERT INTO challenge_chat (id, userId, challengeId, message, imageUrl, verificationStatus, created_at) 
+             VALUES (?, ?, ?, ?, ?, 'pending', NOW())`,
             messageId,
             userId,
             challengeId,
@@ -103,10 +133,66 @@ export class ChallengeChatController {
             imageUrl
           );
           console.log(`[Chat] ✅ Mensagem com imagem salva com sucesso!`);
+          
+          // Chamar verificação de IA de forma assíncrona (não bloquear resposta)
+          setImmediate(async () => {
+            try {
+              console.log(`[Chat] 🤖 Iniciando verificação de IA para mensagem ${messageId}...`);
+              const env = (await import("../config/env")).default;
+              const token = req.headers.authorization?.replace("Bearer ", "");
+              
+              if (!token) {
+                console.warn(`[Chat] ⚠️ Token não encontrado para verificação de IA`);
+                return;
+              }
+
+              // Usar URL do backend configurada no env ou localhost como fallback
+              const baseUrl = env.BACKEND_URL || `http://localhost:${env.PORT || 3005}`;
+              const verifyUrl = `${baseUrl}/api/ai/verify-gym`;
+
+              const verifyResponse = await fetch(verifyUrl, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Authorization": `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                  imageUrl,
+                  challengeId,
+                  messageId,
+                }),
+              });
+
+              if (verifyResponse.ok) {
+                const verifyData = await verifyResponse.json();
+                console.log(`[Chat] ✅ Verificação de IA concluída:`, verifyData);
+              } else {
+                const errorText = await verifyResponse.text();
+                console.error(`[Chat] ❌ Erro na verificação de IA:`, errorText);
+              }
+            } catch (verifyErr) {
+              console.error(`[Chat] ❌ Erro ao chamar verificação de IA:`, verifyErr);
+              // Não falhar a requisição principal se a verificação falhar
+            }
+          });
         } catch (err: any) {
-          // Se falhar (coluna imageUrl não existe), inserir sem imageUrl
-          if (err.code === "P2010" || err.meta?.code === "1054" || err.message?.includes("imageUrl")) {
-            console.warn(`[Chat] ⚠️ Coluna imageUrl não existe. Salvando sem imagem. Execute: ALTER TABLE challenge_chat ADD COLUMN imageUrl VARCHAR(500) NULL;`);
+          // Se falhar (colunas não existem), tentar inserir sem campos de verificação
+          if (err.code === "P2010" || err.meta?.code === "1054" || err.message?.includes("verificationStatus") || err.message?.includes("imageUrl")) {
+            try {
+              await prisma.$executeRawUnsafe(
+                `INSERT INTO challenge_chat (id, userId, challengeId, message, imageUrl, created_at) 
+                 VALUES (?, ?, ?, ?, ?, NOW())`,
+                messageId,
+                userId,
+                challengeId,
+                message || "",
+                imageUrl
+              );
+              console.log(`[Chat] ✅ Mensagem com imagem salva (sem verificação)!`);
+            } catch (err2: any) {
+              // Se ainda falhar, inserir sem imageUrl
+              if (err2.message?.includes("imageUrl")) {
+                console.warn(`[Chat] ⚠️ Coluna imageUrl não existe. Salvando sem imagem.`);
             await prisma.$executeRawUnsafe(
               `INSERT INTO challenge_chat (id, userId, challengeId, message, created_at) 
                VALUES (?, ?, ?, ?, NOW())`,
@@ -115,6 +201,10 @@ export class ChallengeChatController {
               challengeId,
               message || ""
             );
+              } else {
+                throw err2;
+              }
+            }
           } else {
             throw err;
           }
@@ -131,7 +221,7 @@ export class ChallengeChatController {
         );
       }
       
-      // Buscar a mensagem criada (tentar com imageUrl, se falhar buscar sem)
+      // Buscar a mensagem criada (tentar com todos os campos, se falhar buscar sem)
       let result: any[];
       try {
         result = await prisma.$queryRawUnsafe(
@@ -142,6 +232,9 @@ export class ChallengeChatController {
             c.message,
             c.imageUrl,
             c.created_at,
+            c.verificationStatus,
+            c.verifiedAt,
+            c.verificationReason,
             u.name,
             u.avatar_url 
            FROM challenge_chat c 
@@ -150,8 +243,27 @@ export class ChallengeChatController {
           messageId
         ) as any[];
       } catch (err: any) {
-        // Se falhar (coluna imageUrl não existe), buscar sem imageUrl
-        if (err.code === "P2010" || err.meta?.code === "1054" || err.message?.includes("imageUrl")) {
+        // Se falhar (colunas não existem), tentar buscar sem campos de verificação
+        if (err.code === "P2010" || err.meta?.code === "1054" || err.message?.includes("verificationStatus") || err.message?.includes("imageUrl")) {
+          try {
+            result = await prisma.$queryRawUnsafe(
+              `SELECT 
+                c.id,
+                c.userId,
+                c.challengeId,
+                c.message,
+                c.imageUrl,
+                c.created_at,
+                u.name,
+                u.avatar_url 
+               FROM challenge_chat c 
+               JOIN users u ON c.userId = u.id 
+               WHERE c.id = ?`,
+              messageId
+            ) as any[];
+          } catch (err2: any) {
+            // Se ainda falhar, buscar sem imageUrl
+            if (err2.message?.includes("imageUrl")) {
           result = await prisma.$queryRawUnsafe(
             `SELECT 
               c.id,
@@ -166,6 +278,10 @@ export class ChallengeChatController {
              WHERE c.id = ?`,
             messageId
           ) as any[];
+            } else {
+              throw err2;
+            }
+          }
         } else {
           throw err;
         }
@@ -190,6 +306,9 @@ export class ChallengeChatController {
         message: msg.message,
         imageUrl: msg.imageUrl ?? null,
         created_at: msg.created_at,
+        verificationStatus: msg.verificationStatus ?? "pending",
+        verifiedAt: msg.verifiedAt ?? null,
+        verificationReason: msg.verificationReason ?? null,
       };
 
       return res.json({ data: formatted });

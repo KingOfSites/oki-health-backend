@@ -14,6 +14,10 @@ router.get("/transactions", authenticate, WalletController.getTransactions);
 router.post("/deposit", authenticate, WalletController.deposit);
 router.post("/withdraw", authenticate, WalletController.withdraw);
 
+// Rotas para pagamento de depósito via Mercado Pago
+router.post("/deposit/payment", authenticate, WalletController.startDepositPayment);
+router.post("/deposit/confirm", authenticate, WalletController.confirmDepositPayment);
+
 // NOVA ROTA: carteira de tokens por usuário
 router.get("/:userId", authenticate, WalletController.getUserTokenWallet);
 

@@ -59,6 +59,9 @@ export class ChallengesController {
         coverUrl,
         entryPriceCents,
         maxParticipants,
+        firstPlacePrizeCents,
+        secondPlacePrizeCents,
+        thirdPlacePrizeCents,
       } = req.body;
 
       if (!title || !description || !category || !startDate || !endDate) {
@@ -80,6 +83,9 @@ export class ChallengesController {
         coverUrl,
         entryPriceCents: entryPriceCents || 0,
         maxParticipants,
+        firstPlacePrizeCents: firstPlacePrizeCents || 0,
+        secondPlacePrizeCents: secondPlacePrizeCents || 0,
+        thirdPlacePrizeCents: thirdPlacePrizeCents || 0,
       });
 
       return res.status(201).json({ success: true, data });

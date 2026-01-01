@@ -32,6 +32,46 @@ export class AuthController {
     }
   }
 
+  // POST /api/auth/admin/login - Login específico para admin
+  static async adminLogin(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { email, password } = req.body;
+
+      if (!email || !password) {
+        return res.status(400).json({
+          success: false,
+          message: "Email e senha são obrigatórios",
+        });
+      }
+
+      try {
+        const result = await AuthService.signin({ email, password });
+
+        // Verificar se o usuário é admin
+        if (!result.user.isAdmin) {
+          return res.status(403).json({
+            success: false,
+            message: "Acesso negado. Apenas administradores podem acessar este painel.",
+          });
+        }
+
+        return res.status(200).json({
+          success: true,
+          message: "Login realizado com sucesso",
+          data: result,
+        });
+      } catch (authError: any) {
+        // Se o erro for do AuthService (email/senha incorretos)
+        return res.status(401).json({
+          success: false,
+          message: authError.message || "Email ou senha incorretos",
+        });
+      }
+    } catch (error) {
+      return next(error);
+    }
+  }
+
   static async getProfile(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       if (!req.userId) {

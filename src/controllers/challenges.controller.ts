@@ -62,6 +62,10 @@ export class ChallengesController {
         firstPlacePrizeCents,
         secondPlacePrizeCents,
         thirdPlacePrizeCents,
+        minAge,
+        minWeight,
+        maxWeight,
+        requiredActivityLevel,
       } = req.body;
 
       if (!title || !description || !category || !startDate || !endDate) {
@@ -86,6 +90,10 @@ export class ChallengesController {
         firstPlacePrizeCents: firstPlacePrizeCents || 0,
         secondPlacePrizeCents: secondPlacePrizeCents || 0,
         thirdPlacePrizeCents: thirdPlacePrizeCents || 0,
+        minAge: minAge ? parseInt(minAge) : null,
+        minWeight: minWeight ? parseFloat(minWeight) : null,
+        maxWeight: maxWeight ? parseFloat(maxWeight) : null,
+        requiredActivityLevel: requiredActivityLevel || null,
       });
 
       return res.status(201).json({ success: true, data });
@@ -232,6 +240,16 @@ static async searchChallenges(req: AuthRequest, res: Response, next: NextFunctio
       }
 
       const result = await ChallengesService.joinChallenge(req.userId, challengeId);
+
+      // 🟥 Validação falhou (não atende aos critérios)
+      if ((result as any).validationFailed) {
+        return res.status(403).json({
+          success: false,
+          validationFailed: true,
+          errors: (result as any).errors,
+          message: (result as any).message,
+        });
+      }
 
       // 🟥 Requer pagamento
       if (result.requiresPayment) {

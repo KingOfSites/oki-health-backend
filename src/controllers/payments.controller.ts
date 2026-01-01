@@ -1,8 +1,17 @@
 import { Request, Response } from "express";
 import { MercadoPagoConfig, Payment } from "mercadopago";
 
+const mpAccessToken = process.env.MP_ACCESS_TOKEN || process.env.MERCADOPAGO_ACCESS_TOKEN;
+
+// BLOQUEAR tokens de teste - APENAS PRODUÇÃO PERMITIDA
+if (mpAccessToken && mpAccessToken.startsWith("TEST-")) {
+  console.error("❌ [Payments Controller] ERRO: Token de TESTE detectado!");
+  console.error("   ⚠️  APENAS tokens de PRODUÇÃO são permitidos neste sistema!");
+  throw new Error("Token de teste não permitido. Use apenas token de produção.");
+}
+
 const mpClient = new MercadoPagoConfig({
-  accessToken: process.env.MP_ACCESS_TOKEN!,
+  accessToken: mpAccessToken || "",
 });
 
 export class PaymentsController {

@@ -3,17 +3,34 @@ import prisma from "../config/database";
 import { MercadoPagoConfig, Payment, CardToken } from "mercadopago";
 
 // ======================================================
-// 🔑 CONFIG MERCADO PAGO
+// 🔑 CONFIG MERCADO PAGO - APENAS PRODUÇÃO
 // ======================================================
 const mpAccessToken =
   process.env.MP_ACCESS_TOKEN || process.env.MERCADOPAGO_ACCESS_TOKEN;
 
 if (!mpAccessToken) {
-  console.error("❌ MP_ACCESS_TOKEN / MERCADOPAGO_ACCESS_TOKEN não configurado");
+  console.error("❌ [Challenge Payment] MP_ACCESS_TOKEN não configurado!");
+  console.error("   Configure a variável MP_ACCESS_TOKEN no arquivo .env");
+} else {
+  // BLOQUEAR tokens de teste - APENAS PRODUÇÃO PERMITIDA
+  if (mpAccessToken.startsWith("TEST-")) {
+    console.error("❌ [Challenge Payment] ERRO: Token de TESTE detectado!");
+    console.error("   ⚠️  APENAS tokens de PRODUÇÃO são permitidos neste sistema!");
+    console.error("   Configure MP_ACCESS_TOKEN com token de PRODUÇÃO (começa com APP_USR-)");
+    throw new Error("Token de teste não permitido. Use apenas token de produção.");
+  }
+  
+  if (!mpAccessToken.startsWith("APP_USR-")) {
+    console.error("❌ [Challenge Payment] Token inválido para produção!");
+    console.error("   Token deve começar com APP_USR-");
+    throw new Error("Token de produção inválido.");
+  }
+  
+  console.log(`✅ [Challenge Payment] Mercado Pago configurado - MODO PRODUÇÃO`);
 }
 
 const mp = new MercadoPagoConfig({
-  accessToken: mpAccessToken || "", // evita undefined
+  accessToken: mpAccessToken || "",
 });
 
 export class ChallengePaymentController {

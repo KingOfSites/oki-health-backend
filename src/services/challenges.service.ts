@@ -301,6 +301,86 @@ export class ChallengesService {
       };
     }
 
+    // Buscar dados do usuário para validação de critérios
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        age: true,
+        peso: true,
+        atividade: true,
+      },
+    });
+
+    if (!user) {
+      throw new Error("Usuário não encontrado");
+    }
+
+    // Validar critérios de participação
+    const validationErrors: string[] = [];
+
+    // Verificar idade mínima
+    if (challenge.minAge !== null && challenge.minAge !== undefined) {
+      if (!user.age || user.age < challenge.minAge) {
+        validationErrors.push(`Idade mínima requerida: ${challenge.minAge} anos. Sua idade: ${user.age || 'não informada'} anos.`);
+      }
+    }
+
+    // Verificar peso
+    if (challenge.minWeight !== null && challenge.minWeight !== undefined || 
+        challenge.maxWeight !== null && challenge.maxWeight !== undefined) {
+      if (!user.peso) {
+        validationErrors.push("Peso não informado no perfil. Por favor, atualize seu perfil.");
+      } else {
+        if (challenge.minWeight !== null && challenge.minWeight !== undefined && user.peso < challenge.minWeight) {
+          validationErrors.push(`Peso mínimo requerido: ${challenge.minWeight} kg. Seu peso: ${user.peso} kg.`);
+        }
+        if (challenge.maxWeight !== null && challenge.maxWeight !== undefined && user.peso > challenge.maxWeight) {
+          validationErrors.push(`Peso máximo permitido: ${challenge.maxWeight} kg. Seu peso: ${user.peso} kg.`);
+        }
+      }
+    }
+
+    // Verificar nível de atividade
+    if (challenge.requiredActivityLevel) {
+      if (!user.atividade) {
+        validationErrors.push("Frequência de atividade não informada no perfil. Por favor, atualize seu perfil.");
+      } else {
+        // Hierarquia de níveis de atividade (maior = mais intenso)
+        const activityLevels: Record<string, number> = {
+          "sedentario": 1,
+          "leve": 2,
+          "moderado": 3,
+          "intenso": 4,
+          "muito_intenso": 5,
+        };
+
+        const userLevel = activityLevels[user.atividade] || 0;
+        const requiredLevel = activityLevels[challenge.requiredActivityLevel] || 0;
+
+        if (userLevel < requiredLevel) {
+          const activityLabels: Record<string, string> = {
+            "sedentario": "Sedentário",
+            "leve": "Leve",
+            "moderado": "Moderado",
+            "intenso": "Intenso",
+            "muito_intenso": "Muito Intenso",
+          };
+          validationErrors.push(`Nível de atividade requerido: ${activityLabels[challenge.requiredActivityLevel]}. Seu nível: ${activityLabels[user.atividade] || 'não informado'}.`);
+        }
+      }
+    }
+
+    // Se houver erros de validação, retornar erro
+    if (validationErrors.length > 0) {
+      return {
+        requiresPayment: false,
+        already: false,
+        validationFailed: true,
+        errors: validationErrors,
+        message: "Você não atende aos critérios de participação deste desafio:\n" + validationErrors.join("\n"),
+      };
+    }
+
     // Verificar se o desafio tem preço de entrada
     const entryPrice = challenge.entryPriceCents || 0;
 

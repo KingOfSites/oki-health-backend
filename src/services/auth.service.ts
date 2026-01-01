@@ -47,6 +47,7 @@ export interface AuthResponse {
     xp: number;
     level: number;
     avatar_url?: string | null;
+    isAdmin?: boolean;
 
     created_at: Date;
     updated_at: Date;
@@ -181,6 +182,7 @@ export class AuthService {
         xp: user.xp,
         level: user.level,
         avatar_url: user.avatar_url ?? null,
+        isAdmin: user.isAdmin ?? false,
 
         created_at: user.created_at,
         updated_at: user.updated_at,

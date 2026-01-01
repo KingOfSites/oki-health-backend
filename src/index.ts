@@ -19,7 +19,16 @@ const app = express();
 // --------------------------------------------------------
 // BODY PARSER — AGORA ACEITA IMAGENS GRANDES (ATÉ 50MB)
 // --------------------------------------------------------
-app.use(express.json({ limit: "50mb" }));
+// Capturar rawBody antes do parsing para validação de assinatura do webhook
+app.use(express.json({ 
+  limit: "50mb",
+  verify: (req: any, res, buf) => {
+    // Capturar body bruto apenas para rotas de webhook (para validação HMAC)
+    if (req.path && req.path.includes('/webhook')) {
+      req.rawBody = buf.toString('utf8');
+    }
+  }
+}));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // --------------------------------------------------------
@@ -105,6 +114,25 @@ app.use((req, res, next) => {
   next();
 });
 
+// Rota na raiz para indicar que o servidor está funcionando
+app.get("/", (req, res) => {
+  res.json({ 
+    success: true, 
+    message: "🚀 Oki Health Backend API está funcionando!",
+    timestamp: new Date().toISOString(),
+    port: PORT,
+    environment: env.NODE_ENV,
+    apiUrl: `http://127.0.0.1:${PORT}/api`,
+    endpoints: {
+      health: "/api/health",
+      wallet: "/api/wallet",
+      auth: "/api/auth",
+      challenges: "/api/challenges",
+      webhook: "/api/wallet/webhook"
+    }
+  });
+});
+
 // Health check endpoint (antes das rotas)
 app.get("/api/health", (req, res) => {
   res.json({ 
@@ -126,6 +154,10 @@ app.use("/api/avatar", avatarRoutes);
 
 // Router principal (auth, IA, wallet, challenges, payments, nutrition...)
 app.use("/api", routes);
+
+// Rotas admin
+import adminRoutes from "./routes/admin.routes";
+app.use("/api/admin", adminRoutes);
 
 // --------------------------------------------------------
 // ERROR HANDLER

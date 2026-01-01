@@ -28,7 +28,8 @@ model User {
   sexo      String?
   atividade String?
 
-  isPro Boolean @default(false) // Indica se o usuário é PRO
+  isPro   Boolean @default(false) // Indica se o usuário é PRO
+  isAdmin Boolean @default(false) // Indica se o usuário é administrador
 
   // Configurações do usuário
   darkMode      Boolean @default(true)
@@ -42,14 +43,15 @@ model User {
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  challenges        ChallengeParticipant[]
-  createdChallenges Challenge[]
-  transactions      Transaction[]
-  achievements      Achievement[]
-  planSubscription  PlanSubscription?
-  posts             ChallengePost[]
-  chatMessages      ChallengeChat[]
-  referralEarnings  Referral[]             @relation("UserReferralEarnings")
+  challenges         ChallengeParticipant[]
+  createdChallenges  Challenge[]
+  transactions       Transaction[]
+  achievements       Achievement[]
+  planSubscription   PlanSubscription?
+  posts              ChallengePost[]
+  chatMessages       ChallengeChat[]
+  referralEarnings   Referral[]             @relation("UserReferralEarnings")
+  withdrawalRequests WithdrawalRequest[]
 
   @@map("users")
 }
@@ -73,6 +75,12 @@ model Challenge {
   firstPlacePrizeCents  Int @default(0)
   secondPlacePrizeCents Int @default(0)
   thirdPlacePrizeCents  Int @default(0)
+
+  // Critérios de participação
+  minAge                Int?   // Idade mínima para participar
+  minWeight             Float? // Peso mínimo (em kg)
+  maxWeight             Float? // Peso máximo (em kg)
+  requiredActivityLevel String? // Nível de atividade requerido: "sedentario", "leve", "moderado", "intenso", "muito_intenso"
 
   // Campo adicional (mantido do banco existente)
   status String?
@@ -189,7 +197,7 @@ model ChallengeChat {
   // Campos de verificação de IA
   verificationStatus String?   @default("pending") // pending, verified, rejected
   verifiedAt         DateTime?
-  verificationReason String? @db.Text // Motivo da rejeição ou confirmação
+  verificationReason String?   @db.Text // Motivo da rejeição ou confirmação
 
   challenge Challenge @relation(fields: [challengeId], references: [id])
   user      User      @relation(fields: [userId], references: [id])
@@ -213,4 +221,33 @@ model Referral {
   @@index([referrerId])
   @@index([referredUserId])
   @@map("referrals")
+}
+
+model WithdrawalRequest {
+  id             String    @id @default(uuid())
+  userId         String
+  amount         Float
+  status         String    @default("pending") // pending, approved, rejected, completed
+  withdrawalType String    @default("bank") // "bank" ou "pix"
+  fullName       String
+  cpf            String
+  // Dados bancários (quando withdrawalType = "bank")
+  bankName       String?
+  agency         String?
+  account        String?
+  accountType    String? // "checking" ou "savings"
+  // Dados PIX (quando withdrawalType = "pix")
+  pixKeyType     String? // "cpf", "email", "phone", "random"
+  pixKey         String?
+  adminNotes     String?   @db.Text // Notas do admin ao processar
+  processedAt    DateTime?
+  processedBy    String? // ID do admin que processou
+  created_at     DateTime  @default(now())
+  updated_at     DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+  @@map("withdrawal_requests")
 }

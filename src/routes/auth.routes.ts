@@ -27,6 +27,13 @@ router.post("/signup", validate(signupSchema), AuthController.signup);
 router.post("/signin", validate(signinSchema), AuthController.signin);
 
 /**
+ * @route   POST /api/auth/admin/login
+ * @desc    Login admin (verifica se é admin)
+ * @access  Public
+ */
+router.post("/admin/login", validate(signinSchema), AuthController.adminLogin);
+
+/**
  * @route   GET /api/auth/profile
  * @desc    Get full user profile
  * @access  Private

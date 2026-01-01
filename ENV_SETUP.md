@@ -53,8 +53,16 @@ FRONTEND_URL=http://localhost:8080
 # FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
 # FIREBASE_STORAGE_BUCKET=seu-bucket.appspot.com
 
-# Mercado Pago (opcional)
-# MERCADOPAGO_ACCESS_TOKEN=seu-token
+# ============================================
+# MERCADO PAGO - PRODUÇÃO ✅ CONFIGURADO
+# ============================================
+MP_ACCESS_TOKEN=APP_USR-7562557541145329-123108-9ca9146916467b6aef55fc3a2c31f0d7-1430222536
+MP_WEBHOOK_SECRET=4db438e07edbc035abb4596fb870c6935e7e6ec02f539564b46d1e1288615a9e
+
+# Credenciais adicionais (para referência)
+# MP_CLIENT_ID=7562557541145329
+# MP_CLIENT_SECRET=wVa2cAvhBHavxRiL49KqkOTQitr0FI4E
+# MP_PUBLIC_KEY=APP_USR-ea648cdd-eb13-4309-9dff-da6377fd71e1
 ```
 
 ## 🚀 Como Configurar

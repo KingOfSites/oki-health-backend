@@ -19,15 +19,29 @@ if (!hasFirebaseConfig) {
 // 🔥 2. Limpar e normalizar chave (se existir)
 // -------------------------------
 const cleanPrivateKey = (env.FIREBASE_PRIVATE_KEY || "")
-  .replace(/\\n/g, "\n")   // converte \n literal para quebra de linha real
-  .replace(/\r/g, "")      // remove retornos de carro do Windows
-  .replace(/"/g, "")       // remove aspas indesejadas
+  .replace(/\\n/g, "\n")        // converte \n literal para quebra de linha real
+  .replace(/\\\\n/g, "\n")      // trata caso de double escape
+  .replace(/\r/g, "")           // remove retornos de carro do Windows
+  .replace(/"/g, "")            // remove aspas indesejadas
+  .replace(/'/g, "")            // remove aspas simples
+  .replace(/^\s+|\s+$/gm, "")   // remove espaços no início/fim de cada linha
   .trim();
 
+// Validar formato básico da chave privada
+const isValidPrivateKey = cleanPrivateKey && 
+  cleanPrivateKey.includes("-----BEGIN PRIVATE KEY-----") &&
+  cleanPrivateKey.includes("-----END PRIVATE KEY-----");
+
+if (env.FIREBASE_PRIVATE_KEY && !isValidPrivateKey) {
+  console.warn("⚠️  FIREBASE_PRIVATE_KEY está presente mas não está no formato correto.");
+  console.warn("   A chave deve incluir '-----BEGIN PRIVATE KEY-----' e '-----END PRIVATE KEY-----'");
+  console.warn("   Firebase Admin não será inicializado até que a chave seja corrigida.");
+}
+
 // -------------------------------
-// 🔥 3. Inicializar Firebase Admin (apenas se configurado)
+// 🔥 3. Inicializar Firebase Admin (apenas se configurado e válido)
 // -------------------------------
-if (hasFirebaseConfig && !admin.apps.length) {
+if (hasFirebaseConfig && isValidPrivateKey && !admin.apps.length) {
   try {
     admin.initializeApp({
       credential: admin.credential.cert({
@@ -40,17 +54,33 @@ if (hasFirebaseConfig && !admin.apps.length) {
 
     console.log("🔥 Firebase Admin inicializado com sucesso!");
 
-  } catch (err) {
+  } catch (err: any) {
     console.error("❌ Erro ao inicializar Firebase Admin:");
     console.error(err);
+    
+    if (err?.code === "app/invalid-credential") {
+      console.error("");
+      console.error("🔧 SOLUÇÃO:");
+      console.error("   1. Verifique se FIREBASE_PRIVATE_KEY no .env está correta");
+      console.error("   2. A chave deve ter quebras de linha (\\n ou quebra real)");
+      console.error("   3. A chave deve incluir '-----BEGIN PRIVATE KEY-----' e '-----END PRIVATE KEY-----'");
+      console.error("   4. Não remova ou altere os caracteres da chave");
+      console.error("");
+      console.error("   Exemplo de formato correto no .env:");
+      console.error('   FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\\nMIIEvQ...\\n-----END PRIVATE KEY-----"');
+      console.error("");
+      console.error("   O upload de imagens não estará disponível até que o Firebase seja configurado corretamente.");
+    }
   }
+} else if (hasFirebaseConfig && !isValidPrivateKey) {
+  console.warn("⚠️  Firebase configurado mas chave privada inválida. Upload de imagens desabilitado.");
 }
 
 // -------------------------------
 // 🔥 4. Exportar Storage (dois nomes)
 // -------------------------------
-// Se Firebase não estiver configurado, exporta um objeto vazio que lançará erro ao usar
-const bucket = hasFirebaseConfig && admin.apps.length 
+// Se Firebase não estiver configurado ou não inicializado, exporta null
+const bucket = (hasFirebaseConfig && isValidPrivateKey && admin.apps.length) 
   ? admin.storage().bucket()
   : null as any;
 

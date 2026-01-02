@@ -145,6 +145,36 @@ app.get("/api/health", (req, res) => {
   });
 });
 
+// Server info endpoint - retorna informações úteis para configuração do frontend
+app.get("/api/server-info", (req, res) => {
+  const networkIPs = getNetworkIPs();
+  const recommendedIP = getRecommendedIP();
+  
+  res.json({
+    success: true,
+    server: {
+      port: PORT,
+      environment: env.NODE_ENV,
+    },
+    urls: {
+      localhost: `http://localhost:${PORT}/api`,
+      localhostIp: `http://127.0.0.1:${PORT}/api`,
+      androidEmulator: `http://10.0.2.2:${PORT}/api`,
+      iOSSimulator: `http://127.0.0.1:${PORT}/api`,
+    },
+    networkIPs: networkIPs.map(ip => ({
+      ip,
+      url: `http://${ip}:${PORT}/api`,
+      recommended: ip === recommendedIP
+    })),
+    recommended: recommendedIP ? {
+      ip: recommendedIP,
+      url: `http://${recommendedIP}:${PORT}/api`
+    } : null,
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Rotas específicas
 app.use("/api/challenge-posts", challengePostsRoutes);
 app.use("/api/subscribe", subscribeRoutes);
@@ -187,19 +217,51 @@ process.on("SIGINT", gracefulShutdown);
 // --------------------------------------------------------
 
 // Função para descobrir IPs da máquina
+// Retorna IPs priorizados: Wi-Fi primeiro, depois outros
 function getNetworkIPs() {
   const interfaces = os.networkInterfaces();
-  const ips: string[] = [];
+  const wifiIPs: string[] = [];
+  const otherIPs: string[] = [];
 
   for (const name of Object.keys(interfaces)) {
     for (const iface of interfaces[name] || []) {
       // Ignorar interfaces internas e não IPv4
       if (iface.internal || iface.family !== 'IPv4') continue;
-      ips.push(iface.address);
+      
+      const ip = iface.address;
+      
+      // Priorizar IPs de Wi-Fi (192.168.x.x, 10.0.x.x, 172.16-31.x.x)
+      // Ignorar IPs de loopback e link-local
+      if (
+        ip.startsWith('192.168.') ||
+        ip.startsWith('10.') ||
+        (ip.startsWith('172.') && parseInt(ip.split('.')[1] || '0') >= 16 && parseInt(ip.split('.')[1] || '0') <= 31)
+      ) {
+        // Priorizar interfaces Wi-Fi/WLAN
+        if (name.toLowerCase().includes('wi-fi') || 
+            name.toLowerCase().includes('wlan') ||
+            name.toLowerCase().includes('wireless') ||
+            name.toLowerCase().includes('802.11')) {
+          wifiIPs.unshift(ip); // Adicionar no início
+        } else {
+          wifiIPs.push(ip);
+        }
+      } else if (!ip.startsWith('127.') && !ip.startsWith('169.254.')) {
+        // Outros IPs (exceto loopback e link-local)
+        otherIPs.push(ip);
+      }
     }
   }
 
-  return ips;
+  // Retornar Wi-Fi primeiro, depois outros
+  return [...wifiIPs, ...otherIPs];
+}
+
+// Função para obter o IP recomendado para dispositivos móveis
+function getRecommendedIP(): string | null {
+  const ips = getNetworkIPs();
+  // Retornar o primeiro IP (que é o mais prioritário - geralmente Wi-Fi)
+  return ips.length > 0 ? ips[0] : null;
 }
 
 const startServer = async () => {
@@ -223,13 +285,19 @@ const startServer = async () => {
       console.log(`   - iOS Simulator: http://127.0.0.1:${PORT}/api`);
       
       if (networkIPs.length > 0) {
+        const recommendedIP = getRecommendedIP();
         console.log(`   - Dispositivo físico (mesma rede Wi-Fi):`);
         networkIPs.forEach((ip) => {
-          console.log(`     → http://${ip}:${PORT}/api`);
+          const marker = ip === recommendedIP ? " ⭐ RECOMENDADO" : "";
+          console.log(`     → http://${ip}:${PORT}/api${marker}`);
         });
+        if (recommendedIP) {
+          console.log(`   💡 Use este IP no frontend: ${recommendedIP}`);
+        }
       } else {
         console.log(`   - Dispositivo físico: descubra o IP da sua máquina (ipconfig/ifconfig)`);
       }
+      console.log(`   📋 Consulte /api/server-info para informações detalhadas`);
       
       console.log(`📋 CORS: Permitindo requisições sem origin (React Native)`);
       console.log(`📋 CORS: Modo desenvolvimento - todas as origins permitidas`);

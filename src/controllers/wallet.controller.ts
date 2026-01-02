@@ -158,6 +158,7 @@ export class WalletController {
       const userId = (req as AuthRequest).userId;
       if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
+      // Buscar transações normais
       const transactions = await prisma.transaction.findMany({
         where: { userId },
         orderBy: { created_at: "desc" },
@@ -172,7 +173,41 @@ export class WalletController {
         },
       });
 
-      return res.json(transactions);
+      // Buscar solicitações de saque rejeitadas para incluir no histórico
+      const rejectedWithdrawals = await prisma.withdrawalRequest.findMany({
+        where: { 
+          userId,
+          status: "rejected"
+        },
+        orderBy: { created_at: "desc" },
+        take: 50,
+        select: {
+          id: true,
+          amount: true,
+          adminNotes: true,
+          created_at: true,
+        },
+      });
+
+      // Converter saques rejeitados para formato de transação
+      const rejectedTransactions = rejectedWithdrawals.map((withdrawal) => ({
+        id: withdrawal.id,
+        type: "withdraw_rejected",
+        amount: withdrawal.amount,
+        description: withdrawal.adminNotes 
+          ? `Saque rejeitado: ${withdrawal.adminNotes}` 
+          : "Saque rejeitado",
+        status: "rejected",
+        created_at: withdrawal.created_at,
+      }));
+
+      // Combinar e ordenar todas as transações por data (mais recente primeiro)
+      const allTransactions = [...transactions, ...rejectedTransactions].sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+
+      // Retornar apenas as 50 mais recentes
+      return res.json(allTransactions.slice(0, 50));
 
     } catch (err) {
       console.error("[Wallet.getTransactions]", err);
@@ -225,6 +260,9 @@ export class WalletController {
           return res.status(400).json({ error: "Todos os dados bancários são obrigatórios" });
         }
       } else if (withdrawalType === "pix") {
+        if (!bankName) {
+          return res.status(400).json({ error: "Nome do banco é obrigatório para saque PIX" });
+        }
         if (!pixKeyType || !pixKey) {
           return res.status(400).json({ error: "Tipo e chave PIX são obrigatórios" });
         }
@@ -280,8 +318,10 @@ export class WalletController {
           withdrawalType: withdrawalType || "bank",
           fullName: fullName.trim(),
           cpf: cpfDigits,
-          // Dados bancários (se tipo = bank)
-          bankName: withdrawalType === "bank" ? bankName.trim() : null,
+          // Dados bancários
+          // Para PIX: salvar bankName também para confirmação do admin
+          // Para Bank: salvar todos os dados bancários
+          bankName: bankName?.trim() || null,
           agency: withdrawalType === "bank" ? agency.trim() : null,
           account: withdrawalType === "bank" ? account.trim() : null,
           accountType: withdrawalType === "bank" ? accountType : null,
@@ -1277,32 +1317,57 @@ export class WalletController {
           const statusDetail = payment.status_detail || "";
           let userFriendlyMessage = "Pagamento rejeitado";
           
-          // Log para debug - verificar dados do payer na resposta
-          console.log("🔍 [Wallet Payment] Verificando dados do payer na resposta:", {
-            statusDetail,
-            hasPayer: !!payment.payer,
-            payerEmail: payment.payer?.email,
-            payerFirstName: payment.payer?.first_name,
-            payerLastName: payment.payer?.last_name,
-            payerIdentificationNumber: payment.payer?.identification?.number,
-            // Dados que enviamos (para comparação)
-            sentFirstName: firstName,
-            sentLastName: lastName,
-            sentEmail: email,
-            sentCpfLength: cpfDigits?.length,
-          });
+          // Log detalhado: DADOS ENVIADOS (prioritário)
+          console.log("📤 [Wallet Payment] ========== DADOS ENVIADOS AO MERCADO PAGO ==========");
+          console.log("Nome completo:", `${firstName} ${lastName}`);
+          console.log("Primeiro nome:", firstName, "| Tipo:", typeof firstName, "| Length:", firstName?.length);
+          console.log("Sobrenome:", lastName, "| Tipo:", typeof lastName, "| Length:", lastName?.length);
+          console.log("Email:", email, "| Tipo:", typeof email, "| Length:", email?.length);
+          console.log("CPF:", cpfDigits ? `${cpfDigits.substring(0, 3)}***${cpfDigits.substring(9)}` : "não informado", "| Length:", cpfDigits?.length);
+          console.log("Todos os dados enviados são válidos:", !!(firstName && lastName && email && cpfDigits && cpfDigits.length === 11));
+          console.log("=============================================");
+          
+          // Log: DADOS RETORNADOS pelo Mercado Pago (usar dados enviados se MP retornar null)
+          console.log("📥 [Wallet Payment] ========== DADOS DO PAGADOR (RETORNADOS / ENVIADOS) ==========");
+          console.log("Status Detail:", statusDetail);
+          console.log("Payer retornado pelo MP:", payment.payer ? "Sim" : "Não");
+          
+          // Usar dados retornados pelo MP se disponíveis, caso contrário usar dados enviados
+          const payerEmail = payment.payer?.email || email || "não disponível";
+          const payerFirstName = payment.payer?.first_name || firstName || "não disponível";
+          const payerLastName = payment.payer?.last_name || lastName || "não disponível";
+          const payerCpf = payment.payer?.identification?.number || cpfDigits || "não disponível";
+          const dataSource = payment.payer?.email ? "Mercado Pago" : "Dados enviados (MP retornou null)";
+          
+          console.log("Email:", payerEmail, `(${dataSource})`);
+          console.log("Primeiro Nome:", payerFirstName, `(${dataSource})`);
+          console.log("Sobrenome:", payerLastName, `(${dataSource})`);
+          console.log("CPF:", payerCpf ? `${payerCpf.substring(0, 3)}***${payerCpf.substring(payerCpf.length - 2)}` : "não disponível", `(${dataSource})`);
+          if (!payment.payer?.email) {
+            console.log("ℹ️  Mercado Pago retornou dados null - usando dados enviados pelo usuário");
+          }
+          console.log("=============================================");
           
           // NÃO confiar apenas nos dados retornados pelo Mercado Pago
           // O Mercado Pago pode não retornar os dados do payer em algumas rejeições
           // Verificar se ENVIAMOS dados válidos, não se o MP retornou
           const weSentValidData = firstName && lastName && email && cpfDigits && cpfDigits.length === 11;
           
-          console.log("🔍 [Wallet Payment] Análise:", {
-            weSentValidData,
-            statusDetail,
+          console.log("✅ [Wallet Payment] Validação final:", {
+            dadosEnviadosValidos: weSentValidData,
+            statusDetail: statusDetail,
+            motivoRejeicao: statusDetail || "não especificado",
           });
           
           switch (statusDetail) {
+            case "cc_rejected_high_risk":
+              // Rejeição por alto risco - geralmente não é problema de dados
+              if (!weSentValidData) {
+                userFriendlyMessage = "Pagamento rejeitado por segurança. Verifique se todos os dados foram preenchidos corretamente (nome completo, email e CPF).";
+              } else {
+                userFriendlyMessage = "Pagamento rejeitado pelo sistema de segurança. Isso pode acontecer por várias razões: cartão novo, padrão incomum de transação, ou políticas de segurança. Tente novamente mais tarde ou use outro cartão.";
+              }
+              break;
             case "cc_rejected_other_reason":
               // "cc_rejected_other_reason" é um motivo genérico de rejeição
               // Se enviamos dados válidos, o problema não é dados incompletos

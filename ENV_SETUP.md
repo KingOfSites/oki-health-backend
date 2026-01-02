@@ -48,6 +48,7 @@ BACKEND_URL=http://localhost:3005
 FRONTEND_URL=http://localhost:8080
 
 # Firebase (OPCIONAL - apenas se você usar Firebase)
+# Se aparecer erro "Failed to parse private key", consulte: CONFIGURAR_FIREBASE.md
 # FIREBASE_PROJECT_ID=seu-projeto
 # FIREBASE_CLIENT_EMAIL=seu-email@projeto.iam.gserviceaccount.com
 # FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"

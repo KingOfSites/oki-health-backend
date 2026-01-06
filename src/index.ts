@@ -52,9 +52,9 @@ const defaultOrigins = [
   "http://localhost:8080",
   "http://localhost:3000",
   "http://localhost:3005",
-  "http://127.0.0.1:8080",
-  "http://127.0.0.1:3000",
-  "http://127.0.0.1:3005",
+  "http://192.168.1.9:8080",
+  "http://192.168.1.9:3005",
+  "http://192.168.1.9:3005",
   "http://localhost:19006", // Expo web
 ];
 
@@ -122,7 +122,7 @@ app.get("/", (req, res) => {
     timestamp: new Date().toISOString(),
     port: PORT,
     environment: env.NODE_ENV,
-    apiUrl: `http://127.0.0.1:${PORT}/api`,
+    apiUrl: `http://192.168.1.9:${PORT}/api`,
     endpoints: {
       health: "/api/health",
       wallet: "/api/wallet",
@@ -141,7 +141,7 @@ app.get("/api/health", (req, res) => {
     timestamp: new Date().toISOString(),
     port: PORT,
     environment: env.NODE_ENV,
-    apiUrl: `http://127.0.0.1:${PORT}/api`
+    apiUrl: `http://192.168.1.6:${PORT}/api`
   });
 });
 
@@ -158,9 +158,9 @@ app.get("/api/server-info", (req, res) => {
     },
     urls: {
       localhost: `http://localhost:${PORT}/api`,
-      localhostIp: `http://127.0.0.1:${PORT}/api`,
+      localhostIp: `http://192.168.1.6:${PORT}/api`,
       androidEmulator: `http://10.0.2.2:${PORT}/api`,
-      iOSSimulator: `http://127.0.0.1:${PORT}/api`,
+      iOSSimulator: `http://192.168.1.6:${PORT}/api`,
     },
     networkIPs: networkIPs.map(ip => ({
       ip,
@@ -273,16 +273,16 @@ const startServer = async () => {
     const networkIPs = getNetworkIPs();
 
     // Escutar em todas as interfaces (0.0.0.0) para permitir conexões de dispositivos móveis
-    // Isso permite conexões via localhost, 127.0.0.1, IP local, etc.
+    // Isso permite conexões via localhost, 192.168.1.6, IP local, etc.
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`🚀 Server running on port ${PORT}`);
-      console.log(`🔗 API base URL: http://127.0.0.1:${PORT}/api`);
+      console.log(`🔗 API base URL: http://192.168.1.6:${PORT}/api`);
       console.log(`🌐 Server listening on: 0.0.0.0:${PORT} (aceita todas as interfaces)`);
       console.log(`📱 URLs de acesso:`);
       console.log(`   - Localhost: http://localhost:${PORT}/api`);
-      console.log(`   - 127.0.0.1: http://127.0.0.1:${PORT}/api`);
+      console.log(`   - 192.168.1.6: http://192.168.1.6:${PORT}/api`);
       console.log(`   - Android Emulator: http://10.0.2.2:${PORT}/api`);
-      console.log(`   - iOS Simulator: http://127.0.0.1:${PORT}/api`);
+      console.log(`   - iOS Simulator: http://192.168.1.6:${PORT}/api`);
       
       if (networkIPs.length > 0) {
         const recommendedIP = getRecommendedIP();

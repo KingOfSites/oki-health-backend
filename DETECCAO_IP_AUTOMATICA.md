@@ -21,7 +21,7 @@
 ### Frontend
 
 1. **IP Atualizado**
-   - IP atualizado para `192.168.1.6` (conforme detectado pelo backend)
+   - IP atualizado para `192.168.1.9` (conforme detectado pelo backend)
 
 2. **Função de Detecção Automática**
    - Função `detectBackendIP()` que tenta descobrir o IP correto automaticamente
@@ -43,7 +43,7 @@ Quando você iniciar o backend, verá algo assim:
    - Android Emulator: http://10.0.2.2:3005/api
    - iOS Simulator: http://127.0.0.1:3005/api
    - Dispositivo físico (mesma rede Wi-Fi):
-     → http://192.168.1.6:3005/api ⭐ RECOMENDADO
+     → http://192.168.1.9:3005/api ⭐ RECOMENDADO
    💡 Use este IP no frontend: 192.168.1.6
    📋 Consulte /api/server-info para informações detalhadas
 ```
@@ -78,13 +78,13 @@ Resposta exemplo:
   "networkIPs": [
     {
       "ip": "192.168.1.6",
-      "url": "http://192.168.1.6:3005/api",
+      "url": "http://192.168.1.9:3005/api",
       "recommended": true
     }
   ],
   "recommended": {
     "ip": "192.168.1.6",
-    "url": "http://192.168.1.6:3005/api"
+    "url": "http://192.168.1.9:3005/api"
   }
 }
 ```
@@ -94,7 +94,7 @@ Resposta exemplo:
 Se o IP mudar, atualize o arquivo `oki-health-native/constants/api.ts`:
 
 ```typescript
-const DEVICE_IP = "192.168.1.6"; // Atualize aqui com o IP mostrado pelo backend
+const DEVICE_IP = "192.168.1.9"; // Atualize aqui com o IP mostrado pelo backend
 ```
 
 ## 🔧 Solução de Problemas
@@ -117,7 +117,7 @@ const DEVICE_IP = "192.168.1.6"; // Atualize aqui com o IP mostrado pelo backend
    - Verifique no celular: Configurações → Wi-Fi
 
 3. **Teste o IP diretamente no navegador do celular:**
-   - Abra: `http://192.168.1.6:3005/api/health`
+   - Abra: `http://192.168.1.9:3005/api/health`
    - Se funcionar no navegador, o problema pode ser no app
 
 4. **Verifique o firewall:**

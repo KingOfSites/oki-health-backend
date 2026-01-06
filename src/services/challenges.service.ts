@@ -283,6 +283,17 @@ export class ChallengesService {
       throw new Error("Desafio não encontrado");
     }
 
+    // Verificar se o desafio já terminou
+    const now = new Date();
+    if (now > challenge.endDate) {
+      return {
+        requiresPayment: false,
+        already: false,
+        challengeEnded: true,
+        message: "Este desafio já foi concluído e não aceita mais participantes.",
+      };
+    }
+
     // Verificar se já está participando
     const existingParticipant = await prisma.challengeParticipant.findUnique({
       where: {

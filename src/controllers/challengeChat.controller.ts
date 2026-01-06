@@ -147,7 +147,7 @@ export class ChallengeChatController {
               }
 
               // Usar URL do backend configurada no env ou localhost como fallback
-              const baseUrl = env.BACKEND_URL || `http://localhost:${env.PORT || 3005}`;
+              const baseUrl = env.BACKEND_URL || `http://192.168.1.6:${env.PORT || 3005}`;
               const verifyUrl = `${baseUrl}/api/ai/verify-gym`;
 
               const verifyResponse = await fetch(verifyUrl, {

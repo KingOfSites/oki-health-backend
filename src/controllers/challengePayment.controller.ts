@@ -67,11 +67,12 @@ export class ChallengePaymentController {
       }
 
       const entry = challenge.entryPriceCents ?? 0;
-      const fee = 1500; // taxa fixa (em centavos)
-      const amount = (entry + fee) / 100; // valor em R$
+      const entryAmount = entry / 100; // valor de entrada em R$ (sem taxa para carteira)
+      const fee = 1500; // taxa fixa (em centavos) - apenas para PIX/Cartão
+      const amountWithFee = (entry + fee) / 100; // valor em R$ com taxa (para PIX/Cartão)
 
       // ======================================================
-      // 🔒 VERIFICAR SE JÁ EXISTE PAGAMENTO APROVADO
+      // 🔒 VERIFICAR SE JÁ EXISTE PAGAMENTO APROVADO E SE ESTÁ PARTICIPANDO
       // ======================================================
       const alreadyPaid = await prisma.transaction.findFirst({
         where: {
@@ -82,17 +83,41 @@ export class ChallengePaymentController {
         },
       });
 
-      if (alreadyPaid) {
+      // Verificar se o usuário já está participando do desafio
+      const isParticipating = await prisma.challengeParticipant.findUnique({
+        where: {
+          userId_challengeId: {
+            userId,
+            challengeId,
+          },
+        },
+      });
+
+      // Se já pagou E já está participando, não precisa processar novamente
+      if (alreadyPaid && isParticipating) {
+        console.log(`ℹ️ [Wallet Payment] Pagamento já realizado e usuário já está participando. Transação ID: ${alreadyPaid.id}`);
         return res.json({
           success: true,
           message: "Pagamento já realizado anteriormente",
+          alreadyParticipating: true,
         });
+      }
+
+      // Se existe transação mas não está participando, ou se não existe transação, processar pagamento
+      if (alreadyPaid && !isParticipating) {
+        console.log(`⚠️ [Wallet Payment] Existe transação aprovada mas usuário não está participando. Processando participação...`);
+        // Continuar para processar a participação
       }
 
       // ======================================================
       // 💰 PAGAMENTO COM CARTEIRA
       // ======================================================
       if (type === "wallet") {
+        // Se já existe transação aprovada mas usuário não está participando, 
+        // pode ser que o débito não aconteceu. Vamos processar o pagamento normalmente.
+        if (alreadyPaid && !isParticipating) {
+          console.log(`⚠️ [Wallet Payment] Transação existe mas usuário não está participando. Processando pagamento completo (pode debitar novamente se necessário)...`);
+        }
         // Buscar saldo do usuário
         const user = await prisma.user.findUnique({
           where: { id: userId },
@@ -106,47 +131,136 @@ export class ChallengePaymentController {
           });
         }
 
-        if (user.balance < amount) {
+        console.log(`💰 [Wallet Payment] Usuário: ${userId}, Saldo atual: R$ ${user.balance.toFixed(2)}, Valor entrada: R$ ${entryAmount.toFixed(2)}`);
+
+        // Para pagamento com carteira, usar apenas o valor de entrada (sem taxa)
+        if (user.balance < entryAmount) {
           return res.status(400).json({
             success: false,
-            message: `Saldo insuficiente. Você tem R$ ${user.balance.toFixed(2)} e precisa de R$ ${amount.toFixed(2)}`,
+            message: `Saldo insuficiente. Você tem R$ ${user.balance.toFixed(2)} e precisa de R$ ${entryAmount.toFixed(2)}`,
           });
         }
 
-        // Debitar da carteira
-        await prisma.user.update({
+        // Usar transação do Prisma para garantir atomicidade
+        const result = await prisma.$transaction(async (tx) => {
+          // Buscar saldo atualizado dentro da transação
+          const currentUser = await tx.user.findUnique({
+            where: { id: userId },
+            select: { balance: true },
+          });
+
+          if (!currentUser) {
+            throw new Error("Usuário não encontrado");
+          }
+
+          console.log(`💰 [Wallet Payment - Transaction] Saldo antes: R$ ${currentUser.balance.toFixed(2)}, Valor a debitar: R$ ${entryAmount.toFixed(2)}`);
+
+          if (currentUser.balance < entryAmount) {
+            throw new Error(`Saldo insuficiente. Você tem R$ ${currentUser.balance.toFixed(2)} e precisa de R$ ${entryAmount.toFixed(2)}`);
+          }
+
+          // Verificar se já existe transação aprovada dentro da transação
+          const existingTransaction = await tx.transaction.findFirst({
+            where: {
+              userId,
+              challengeId,
+              type: "challenge_entry",
+              status: "approved",
+            },
+          });
+
+          let transaction;
+          if (existingTransaction) {
+            // Se já existe transação, usar a existente
+            transaction = existingTransaction;
+            console.log(`📝 [Wallet Payment - Transaction] Usando transação existente: ID ${transaction.id}`);
+          } else {
+            // Se não existe, criar nova transação
+            transaction = await tx.transaction.create({
+              data: {
+                userId,
+                challengeId,
+                type: "challenge_entry",
+                amount: entryAmount,
+                status: "approved",
+                description: `Entrada no desafio: ${challenge.title}`,
+              },
+            });
+            console.log(`📝 [Wallet Payment - Transaction] Transação criada: ID ${transaction.id}, Valor: R$ ${transaction.amount.toFixed(2)}, Status: ${transaction.status}`);
+          }
+
+          // Debitar da carteira apenas o valor de entrada (sem taxa)
+          // Sempre debitar, mesmo se já existe transação (pode não ter sido debitado antes)
+          const updatedUser = await tx.user.update({
+            where: { id: userId },
+            data: {
+              balance: { decrement: entryAmount },
+            },
+            select: { balance: true },
+          });
+
+          console.log(`💰 [Wallet Payment - Transaction] Saldo depois: R$ ${updatedUser.balance.toFixed(2)}`);
+
+          // Verificar se já está participando antes de criar
+          const existingParticipant = await tx.challengeParticipant.findUnique({
+            where: {
+              userId_challengeId: {
+                userId,
+                challengeId,
+              },
+            },
+          });
+
+          if (!existingParticipant) {
+            // Inscrever usuário no desafio
+            const participant = await tx.challengeParticipant.create({
+              data: {
+                userId,
+                challengeId,
+                progress: 0,
+                points: 0,
+              },
+            });
+            console.log(`✅ [Wallet Payment - Transaction] Participante criado: ID ${participant.id}`);
+          } else {
+            console.log(`⚠️ [Wallet Payment - Transaction] Usuário já está participando do desafio`);
+          }
+
+          return transaction;
+        });
+
+        // Verificar saldo final após a transação
+        const finalUser = await prisma.user.findUnique({
           where: { id: userId },
-          data: {
-            balance: { decrement: amount },
-          },
+          select: { balance: true },
         });
 
-        // Criar transação
-        const transaction = await prisma.transaction.create({
-          data: {
-            userId,
-            challengeId,
-            type: "challenge_entry",
-            amount,
-            status: "approved",
-            description: `Entrada no desafio: ${challenge.title}`,
-          },
+        console.log(`✅ [Wallet Payment] Pagamento processado com sucesso!`);
+        console.log(`   Transação ID: ${result.id}`);
+        console.log(`   Valor debitado: R$ ${entryAmount.toFixed(2)}`);
+        console.log(`   Saldo final: R$ ${finalUser?.balance.toFixed(2) || 'N/A'}`);
+
+        // Verificar se a transação foi realmente criada
+        const verifyTransaction = await prisma.transaction.findUnique({
+          where: { id: result.id },
         });
 
-        // Inscrever usuário no desafio
-        await prisma.challengeParticipant.create({
-          data: {
-            userId,
-            challengeId,
-            progress: 0,
-            points: 0,
-          },
-        });
+        if (!verifyTransaction) {
+          console.error(`❌ [Wallet Payment] ERRO: Transação não foi criada! ID esperado: ${result.id}`);
+          return res.status(500).json({
+            success: false,
+            message: "Erro ao processar pagamento. Transação não foi criada.",
+          });
+        }
+
+        console.log(`✅ [Wallet Payment] Transação verificada: ID ${verifyTransaction.id}, Valor: R$ ${verifyTransaction.amount.toFixed(2)}, Status: ${verifyTransaction.status}`);
 
         return res.json({
           success: true,
           message: "Pagamento realizado com sucesso!",
-          transactionId: transaction.id,
+          transactionId: result.id,
+          amount: entryAmount,
+          newBalance: finalUser?.balance,
         });
       }
 
@@ -178,7 +292,7 @@ export class ChallengePaymentController {
       if (type === "pix") {
         const payment = await new Payment(mp).create({
           body: {
-            transaction_amount: amount,
+            transaction_amount: amountWithFee,
             payment_method_id: "pix",
             description: `Entrada no desafio: ${challenge.title}`,
             payer: {
@@ -200,7 +314,7 @@ export class ChallengePaymentController {
             mpPaymentId: String(payment.id),
             status: "pending",
             type: "challenge_entry",
-            amount,
+            amount: amountWithFee,
             description: `Entrada no desafio: ${challenge.title}`,
           },
         });
@@ -261,8 +375,8 @@ export class ChallengePaymentController {
         const token = await new CardToken(mp).create({
           body: {
             card_number: cardNumber,
-            expiration_month,
-            expiration_year,
+            expiration_month: String(expiration_month),
+            expiration_year: String(expiration_year),
             security_code: card.cvv,
             cardholder: {
               name: `${firstName} ${lastName}`,
@@ -279,7 +393,7 @@ export class ChallengePaymentController {
         // -------------------------------
         const payment = await new Payment(mp).create({
           body: {
-            transaction_amount: amount,
+            transaction_amount: amountWithFee,
             token: token.id,
             description: `Entrada no desafio: ${challenge.title}`,
             installments: 1,
@@ -303,7 +417,7 @@ export class ChallengePaymentController {
             mpPaymentId: String(payment.id),
             status: payment.status,
             type: "challenge_entry",
-            amount,
+            amount: amountWithFee,
             description: `Entrada no desafio: ${challenge.title}`,
           },
         });
@@ -386,6 +500,13 @@ export class ChallengePaymentController {
       });
 
       // Inscrever usuário no desafio
+      if (!transaction.userId) {
+        return res.status(400).json({
+          success: false,
+          message: "Transação sem usuário associado",
+        });
+      }
+
       await prisma.challengeParticipant.create({
         data: {
           userId: transaction.userId,

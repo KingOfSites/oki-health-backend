@@ -251,6 +251,15 @@ static async searchChallenges(req: AuthRequest, res: Response, next: NextFunctio
         });
       }
 
+      // 🟥 Desafio já terminou
+      if ((result as any).challengeEnded) {
+        return res.status(410).json({
+          success: false,
+          challengeEnded: true,
+          message: (result as any).message || "Este desafio já foi concluído e não aceita mais participantes.",
+        });
+      }
+
       // 🟥 Requer pagamento
       if (result.requiresPayment) {
         return res.status(402).json({

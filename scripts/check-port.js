@@ -46,7 +46,7 @@ function checkPort(port) {
 function getNetworkIPs() {
   const interfaces = os.networkInterfaces();
   const ips = {
-    localhost: ['127.0.0.1', 'localhost'],
+    localhost: ['192.168.1.9', 'localhost'],
     ipv4: [],
     ipv6: [],
   };
@@ -131,7 +131,7 @@ async function main() {
 
   // 3. Mostrar configuração atual
   log('\n📋 Configuração atual:', 'cyan');
-  log(`   Backend URL: http://127.0.0.1:3005/api`, 'blue');
+  log(`   Backend URL: http://192.168.1.9:3005/api`, 'blue');
   log(`   Backend URL (localhost): http://localhost:3005/api`, 'blue');
   
   if (ips.ipv4.length > 0) {

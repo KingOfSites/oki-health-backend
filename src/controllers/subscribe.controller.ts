@@ -682,6 +682,7 @@ export class SubscribeController {
         },
         select: {
           id: true,
+          endDate: true,
           plan: {
             select: {
               name: true,

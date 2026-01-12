@@ -1,4 +1,4 @@
-import { Request, Response, NextFunction } from "express";
+import { Response, NextFunction } from "express";
 import { AffiliateService } from "../services/affiliate.service";
 import { AuthRequest } from "../middleware/auth";
 
@@ -10,7 +10,7 @@ export class AffiliateController {
       SELECT isPro FROM users WHERE id = ${userId}
     `;
     const rawIsPro = rawQuery[0]?.isPro;
-    return rawIsPro === true || rawIsPro === 1 || Number(rawIsPro) === 1;
+    return rawIsPro === 1 || Number(rawIsPro) === 1;
   }
 
   // Obter estatísticas do afiliado

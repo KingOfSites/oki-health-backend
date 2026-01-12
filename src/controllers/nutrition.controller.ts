@@ -38,7 +38,7 @@ export class NutritionController {
       });
     } catch (error) {
       console.error("Erro IA:", error);
-      next(error);
+      return next(error);
     }
   }
 }

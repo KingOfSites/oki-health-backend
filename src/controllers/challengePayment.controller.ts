@@ -385,7 +385,7 @@ export class ChallengePaymentController {
                 number: cpfDigits,
               },
             },
-          },
+          } as any, // Type assertion necessário devido a incompatibilidade de tipos do SDK
         });
 
         // -------------------------------

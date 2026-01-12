@@ -22,7 +22,7 @@ const app = express();
 // Capturar rawBody antes do parsing para validação de assinatura do webhook
 app.use(express.json({ 
   limit: "50mb",
-  verify: (req: any, res, buf) => {
+  verify: (req: any, _res, buf) => {
     // Capturar body bruto apenas para rotas de webhook (para validação HMAC)
     if (req.path && req.path.includes('/webhook')) {
       req.rawBody = buf.toString('utf8');
@@ -103,7 +103,7 @@ app.use(
 const PORT = parseInt(env.PORT);
 
 // Middleware de log para debug
-app.use((req, res, next) => {
+app.use((req, _res, next) => {
   const origin = req.headers.origin || 'none';
   const userAgent = req.headers['user-agent'] || 'unknown';
   console.log(`📥 ${req.method} ${req.path} - IP: ${req.ip} - Origin: ${origin}`);
@@ -115,7 +115,7 @@ app.use((req, res, next) => {
 });
 
 // Rota na raiz para indicar que o servidor está funcionando
-app.get("/", (req, res) => {
+app.get("/", (_req, res) => {
   res.json({ 
     success: true, 
     message: "🚀 Oki Health Backend API está funcionando!",
@@ -134,7 +134,7 @@ app.get("/", (req, res) => {
 });
 
 // Health check endpoint (antes das rotas)
-app.get("/api/health", (req, res) => {
+app.get("/api/health", (_req, res) => {
   res.json({ 
     success: true, 
     message: "Server is running",
@@ -146,7 +146,7 @@ app.get("/api/health", (req, res) => {
 });
 
 // Server info endpoint - retorna informações úteis para configuração do frontend
-app.get("/api/server-info", (req, res) => {
+app.get("/api/server-info", (_req, res) => {
   const networkIPs = getNetworkIPs();
   const recommendedIP = getRecommendedIP();
   

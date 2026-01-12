@@ -3,7 +3,7 @@ import { Router } from "express";
 import authRoutes from "./auth.routes";
 import challengesRoutes from "./challenges.routes";
 import walletRoutes from "./wallet.routes";
-import challengeChatRoutes from "./challengeChat.routes";
+// import challengeChatRoutes from "./challengeChat.routes";
 import challengePostsRoutes from "./challengePosts.routes";
 import rankingRoutes from "./ranking.routes";
 import gamificationRoutes from "./gamification.routes";

@@ -1,5 +1,5 @@
 import prisma from "../config/database";
-import { Request, Response } from "express";
+import { Response } from "express";
 
 export const GamificationController = {
   async getUserGamification(req: any, res: Response) {

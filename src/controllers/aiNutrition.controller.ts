@@ -55,19 +55,25 @@ Extremamente ativo (×1.9)
 `;
 
     const response = await openai.chat.completions.create({
-      model: "gpt-5.1",  // ou gpt-4o, gpt-5.1, etc
+      model: "gpt-4o",  // Usando modelo válido
       messages: [
         {
           role: "user",
           content: [
-            { type: "input_text", text: prompt },
-            { type: "input_image", image_url: `data:image/jpeg;base64,${imageBase64}` }
+            { type: "text", text: prompt },
+            { 
+              type: "image_url", 
+              image_url: { url: `data:image/jpeg;base64,${imageBase64}` }
+            }
           ]
         }
       ]
     });
 
     const result = response.choices[0].message.content;
+    if (!result) {
+      return res.status(500).json({ error: "Resposta vazia da IA" });
+    }
     return res.json(JSON.parse(result));
 
   } catch (err: any) {

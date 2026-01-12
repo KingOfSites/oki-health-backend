@@ -28,7 +28,7 @@ router.post("/deposit/confirm", authenticate, WalletController.confirmDepositPay
 // Webhook do Mercado Pago (SEM autenticação - chamado pelo Mercado Pago)
 // ⚠️ IMPORTANTE: Esta rota deve vir ANTES da rota dinâmica /:userId
 router.post("/webhook", WalletController.webhook);
-router.get("/webhook", (req, res) => {
+router.get("/webhook", (_req, res) => {
   // Permitir GET apenas para teste (Mercado Pago usa POST)
   res.json({ 
     success: true, 

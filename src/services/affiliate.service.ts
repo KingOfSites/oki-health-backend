@@ -82,16 +82,22 @@ export class AffiliateService {
 
     // Se não tiver código, gerar um
     if (!user.affiliateCode) {
-      let newCode: string;
+      let newCode: string = "";
       let exists = true;
+      let attempts = 0;
       
       // Garantir que o código seja único
-      while (exists) {
+      while (exists && attempts < 100) {
         newCode = this.generateAffiliateCode();
         const existing = await prisma.user.findUnique({
           where: { affiliateCode: newCode },
         });
         exists = !!existing;
+        attempts++;
+      }
+
+      if (!newCode) {
+        throw new Error("Não foi possível gerar código de afiliado único");
       }
 
       await prisma.user.update({

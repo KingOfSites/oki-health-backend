@@ -988,8 +988,8 @@ export class WalletController {
           token = await new CardToken(mp).create({
             body: {
               card_number: cardNumber,
-              expiration_month,
-              expiration_year,
+              expiration_month: String(expiration_month),
+              expiration_year: String(expiration_year),
               security_code: card.cvv,
               cardholder: {
                 name: cardholderName, // Nome completo (deve corresponder ao payer do pagamento)
@@ -998,7 +998,7 @@ export class WalletController {
                   number: cpfForToken, // CPF já validado e limpo (deve corresponder ao payer do pagamento)
                 },
               },
-            },
+            } as any, // Type assertion necessário devido a incompatibilidade de tipos do SDK
           });
           console.log("✅ [Wallet Payment] Token criado com sucesso:", token.id);
         } catch (tokenError: any) {
@@ -1222,8 +1222,8 @@ export class WalletController {
         });
         
         if (payment.status === "rejected") {
-          const rejectionReason = payment.status_detail || payment.cause?.[0]?.description || "Pagamento rejeitado pelo processador";
-          const errorMessage = payment.cause?.[0]?.description || payment.status_detail || "Motivo não especificado";
+          const rejectionReason = payment.status_detail || "Pagamento rejeitado pelo processador";
+          const errorMessage = payment.status_detail || "Motivo não especificado";
           
           // Log detalhado do motivo da rejeição
           console.error("❌ [Wallet Payment] ========== PAGAMENTO REJEITADO ==========");
@@ -1232,7 +1232,7 @@ export class WalletController {
           console.error("Status Detail:", payment.status_detail);
           console.error("Rejection Reason:", rejectionReason);
           console.error("Error Message:", errorMessage);
-          console.error("Cause completo:", JSON.stringify(payment.cause, null, 2));
+          console.error("Status detail:", payment.status_detail);
           console.error("Payment Method:", payment.payment_method);
           console.error("Last 4 digits:", payment.card?.last_four_digits);
           console.error("Live Mode:", payment.live_mode);
@@ -1265,7 +1265,7 @@ export class WalletController {
             paymentId: payment.id,
             status: payment.status,
             statusDetail: payment.status_detail,
-            cause: payment.cause,
+            cause: payment.status_detail || null,
             rejectionReason,
             errorMessage,
             paymentMethod: payment.payment_method,
@@ -1397,7 +1397,7 @@ export class WalletController {
               userFriendlyMessage = "Cartão expirado. Use um cartão com data de validade futura.";
               break;
             default:
-              const errorDesc = payment.cause?.[0]?.description || payment.status_detail || "Motivo não especificado";
+              const errorDesc = payment.status_detail || "Motivo não especificado";
               userFriendlyMessage = `Pagamento rejeitado: ${errorDesc}`;
           }
           
@@ -1518,7 +1518,7 @@ export class WalletController {
   // ======================================================
   // 🔔 WEBHOOK DO MERCADO PAGO (NOTIFICAÇÕES AUTOMÁTICAS)
   // ======================================================
-  static async webhook(req: Request, res: Response) {
+  static async webhook(req: Request, res: Response): Promise<void> {
     try {
       // Validar assinatura secreta se estiver configurada (opcional mas recomendado)
       const webhookSecret = process.env.MP_WEBHOOK_SECRET || process.env.MERCADOPAGO_WEBHOOK_SECRET;
@@ -1532,7 +1532,8 @@ export class WalletController {
           const parts = xSignature.split("=");
           if (parts.length !== 2 || parts[0] !== "sha256") {
             console.error("❌ [Webhook] Formato de assinatura inválido:", xSignature);
-            return res.status(401).json({ error: "Assinatura inválida" });
+            res.status(401).json({ error: "Assinatura inválida" });
+            return;
           }
 
           const receivedSignature = parts[1];
@@ -1556,13 +1557,15 @@ export class WalletController {
             console.error("❌ [Webhook] Assinatura inválida - possível tentativa de fraude!");
             console.error("   Recebida:", receivedSignature.substring(0, 16) + "...");
             console.error("   Esperada:", calculatedSignature.substring(0, 16) + "...");
-            return res.status(401).json({ error: "Assinatura inválida" });
+            res.status(401).json({ error: "Assinatura inválida" });
+            return;
           }
 
           console.log("✅ [Webhook] Assinatura validada com sucesso!");
         } catch (error: any) {
           console.error("❌ [Webhook] Erro ao validar assinatura:", error.message);
-          return res.status(500).json({ error: "Erro ao validar assinatura" });
+          res.status(500).json({ error: "Erro ao validar assinatura" });
+          return;
         }
       } else if (webhookSecret && !xSignature) {
         console.warn("⚠️ [Webhook] Assinatura secreta configurada mas header x-signature não encontrado");
@@ -1587,8 +1590,10 @@ export class WalletController {
       // Responder imediatamente ao Mercado Pago (200 OK)
       // para evitar que ele tente reenviar a notificação
       res.status(200).json({ received: true });
+      
+      // Processar a notificação de forma assíncrona (não bloqueia a resposta)
 
-      // Processar a notificação de forma assíncrona
+      // Processar a notificação de forma assíncrona (não bloqueia a resposta)
       setImmediate(async () => {
         try {
           if (type !== "payment" || !data?.id) {
@@ -1632,6 +1637,10 @@ export class WalletController {
             });
 
             // Creditar na carteira do usuário
+            if (!transaction.userId) {
+              console.error("❌ [Webhook] Transaction sem userId:", transaction.id);
+              return;
+            }
             await prisma.user.update({
               where: { id: transaction.userId },
               data: {
@@ -1666,11 +1675,15 @@ export class WalletController {
           console.error("❌ [Webhook] Erro ao processar notificação:", error);
         }
       });
+      
+      // Retorno explícito após iniciar processamento assíncrono
+      return;
     } catch (error: any) {
       console.error("❌ [Webhook] Erro ao receber webhook:", error);
       // Sempre retornar 200 para o Mercado Pago, mesmo em caso de erro
       // para evitar que ele tente reenviar a notificação
       res.status(200).json({ received: true, error: error.message });
+      return;
     }
   }
 }

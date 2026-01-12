@@ -59,7 +59,7 @@ export const authenticate = async (
 // Middleware de autenticação opcional (não falha se não tiver token)
 export const optionalAuthenticate = async (
   req: AuthRequest,
-  res: Response,
+  _res: Response,
   next: NextFunction
 ) => {
   try {

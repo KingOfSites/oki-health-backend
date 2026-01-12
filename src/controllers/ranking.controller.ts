@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import prisma from "../config/database";
 
 export const RankingController = {
-  async getRanking(req: Request, res: Response) {
+  async getRanking(_req: Request, res: Response) {
     try {
       const top10 = await prisma.user.findMany({
         orderBy: { xp: "desc" },

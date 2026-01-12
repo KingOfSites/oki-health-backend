@@ -127,7 +127,7 @@ export class AuthService {
         age: user.age,
         city: user.city,
 
-        sexo: user.sexo ?? null,
+        sexo: (user.sexo === "M" || user.sexo === "F") ? user.sexo : null,
         peso: user.peso ?? null,
         altura: user.altura ?? null,
         atividade: user.atividade ?? null,
@@ -174,7 +174,7 @@ export class AuthService {
         age: user.age,
         city: user.city,
 
-        sexo: user.sexo ?? null,
+        sexo: (user.sexo === "M" || user.sexo === "F") ? user.sexo : null,
         peso: user.peso ?? null,
         altura: user.altura ?? null,
         atividade: user.atividade ?? null,

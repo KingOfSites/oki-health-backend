@@ -146,10 +146,42 @@ export class ChallengeChatController {
                 return;
               }
 
+              // Buscar o created_at da mensagem recém-criada para formatar o horário
+              // IMPORTANTE: Usar exatamente a mesma lógica do frontend para garantir consistência
+              let messageTimeFormatted: string | undefined;
+              try {
+                const messageData = await prisma.$queryRawUnsafe(
+                  `SELECT created_at FROM challenge_chat WHERE id = ?`,
+                  messageId
+                ) as any[];
+                
+                if (messageData && messageData.length > 0 && messageData[0].created_at) {
+                  // Calcular o horário formatado da mesma forma que o frontend faz
+                  // Frontend usa: new Date(dateString).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+                  const messageCreatedAt = new Date(messageData[0].created_at);
+                  
+                  console.log(`[Chat] 🕐 created_at (raw do banco):`, messageData[0].created_at);
+                  console.log(`[Chat] 🕐 created_at (Date object):`, messageCreatedAt.toISOString());
+                  
+                  // Usar EXATAMENTE a mesma formatação do frontend (sem timeZone explícito, usa o do sistema)
+                  // Mas garantir que seja no timezone do Brasil
+                  messageTimeFormatted = messageCreatedAt.toLocaleTimeString("pt-BR", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    timeZone: "America/Sao_Paulo"
+                  });
+                  
+                  console.log(`[Chat] 🕐 Horário formatado para verificação: ${messageTimeFormatted}`);
+                  console.log(`[Chat] 🕐 Este é o horário que aparece na interface do usuário`);
+                }
+              } catch (timeErr) {
+                console.warn(`[Chat] ⚠️ Erro ao buscar created_at da mensagem:`, timeErr);
+              }
+
               // Usar URL do backend configurada no env ou localhost como fallback
               const baseUrl = env.BACKEND_URL || `http://192.168.1.6:${env.PORT || 3005}`;
               const verifyUrl = `${baseUrl}/api/ai/verify-gym`;
-
+              
               const verifyResponse = await fetch(verifyUrl, {
                 method: "POST",
                 headers: {
@@ -160,6 +192,7 @@ export class ChallengeChatController {
                   imageUrl,
                   challengeId,
                   messageId,
+                  ...(messageTimeFormatted && { messageTime: messageTimeFormatted }), // Enviar o horário formatado (mesmo da interface)
                 }),
               });
 

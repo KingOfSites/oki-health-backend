@@ -140,6 +140,8 @@ export class ChallengesService {
         entryPriceCents: true,
         coverUrl: true,
         createdById: true,
+        startTime: true,
+        endTime: true,
         participants: {
           select: {
             userId: true,
@@ -177,6 +179,8 @@ export class ChallengesService {
         end_date: challenge.endDate,
         entry_price_cents: challenge.entryPriceCents,
         cover_url: challenge.coverUrl,
+        start_time: challenge.startTime,
+        end_time: challenge.endTime,
         participants_count,
         rules: null,
         computed_status,
@@ -250,9 +254,87 @@ export class ChallengesService {
   static async createChallenge(data: any) {
     // Remove status se existir, pois não está no schema
     const { status, ...challengeData } = data;
-    return prisma.challenge.create({
-      data: challengeData,
+    
+    // Garantir que startTime e endTime sejam strings válidas ou null (nunca undefined)
+    if (challengeData.startTime !== null && challengeData.startTime !== undefined) {
+      if (typeof challengeData.startTime === 'string' && challengeData.startTime.trim()) {
+        challengeData.startTime = challengeData.startTime.trim();
+        // Validar formato HH:MM
+        if (!/^([0-1][0-9]|2[0-3]):([0-5][0-9])$/.test(challengeData.startTime)) {
+          throw new Error("Formato de horário inicial inválido. Use HH:MM (ex: 09:00)");
+        }
+      } else {
+        challengeData.startTime = null;
+      }
+    } else {
+      challengeData.startTime = null;
+    }
+    
+    if (challengeData.endTime !== null && challengeData.endTime !== undefined) {
+      if (typeof challengeData.endTime === 'string' && challengeData.endTime.trim()) {
+        challengeData.endTime = challengeData.endTime.trim();
+        // Validar formato HH:MM
+        if (!/^([0-1][0-9]|2[0-3]):([0-5][0-9])$/.test(challengeData.endTime)) {
+          throw new Error("Formato de horário final inválido. Use HH:MM (ex: 12:00)");
+        }
+      } else {
+        challengeData.endTime = null;
+      }
+    } else {
+      challengeData.endTime = null;
+    }
+    
+    // Criar objeto de dados garantindo que todos os campos opcionais sejam null ao invés de undefined
+    const prismaData: any = {
+      createdById: challengeData.createdById,
+      title: challengeData.title,
+      description: challengeData.description,
+      category: challengeData.category,
+      startDate: challengeData.startDate,
+      endDate: challengeData.endDate,
+      reward: challengeData.reward || 0,
+      location: challengeData.location || null,
+      coverUrl: challengeData.coverUrl || null,
+      entryPriceCents: challengeData.entryPriceCents || 0,
+      maxParticipants: challengeData.maxParticipants || null,
+      firstPlacePrizeCents: challengeData.firstPlacePrizeCents || 0,
+      secondPlacePrizeCents: challengeData.secondPlacePrizeCents || 0,
+      thirdPlacePrizeCents: challengeData.thirdPlacePrizeCents || 0,
+      minAge: challengeData.minAge || null,
+      minWeight: challengeData.minWeight || null,
+      maxWeight: challengeData.maxWeight || null,
+      requiredActivityLevel: challengeData.requiredActivityLevel || null,
+      startTime: challengeData.startTime, // Já processado acima
+      endTime: challengeData.endTime, // Já processado acima
+    };
+    
+    // Garantir explicitamente que startTime e endTime estejam no objeto
+    // Mesmo que sejam null, eles devem estar presentes para o Prisma salvar
+    prismaData.startTime = challengeData.startTime === undefined ? null : challengeData.startTime;
+    prismaData.endTime = challengeData.endTime === undefined ? null : challengeData.endTime;
+    
+    console.log("💾 [ChallengesService] Salvando desafio com horários:", {
+      startTime: prismaData.startTime,
+      endTime: prismaData.endTime,
+      startTimeType: typeof prismaData.startTime,
+      endTimeType: typeof prismaData.endTime,
+      startTimeInData: challengeData.startTime,
+      endTimeInData: challengeData.endTime,
     });
+    
+    console.log("💾 [ChallengesService] Objeto completo que será salvo:", JSON.stringify(prismaData, null, 2));
+    
+    const challenge = await prisma.challenge.create({
+      data: prismaData,
+    });
+    
+    console.log("✅ [ChallengesService] Desafio salvo no banco:", {
+      id: challenge.id,
+      startTime: challenge.startTime,
+      endTime: challenge.endTime,
+    });
+    
+    return challenge;
   }
 
   // --------------------------------

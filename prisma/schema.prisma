@@ -52,6 +52,7 @@ model User {
   chatMessages       ChallengeChat[]
   referralEarnings   Referral[]             @relation("UserReferralEarnings")
   withdrawalRequests WithdrawalRequest[]
+  nutritionAnalyses  NutritionAnalysis[]
 
   @@map("users")
 }
@@ -81,6 +82,10 @@ model Challenge {
   minWeight             Float? // Peso mínimo (em kg)
   maxWeight             Float? // Peso máximo (em kg)
   requiredActivityLevel String? // Nível de atividade requerido: "sedentario", "leve", "moderado", "intenso", "muito_intenso"
+
+  // Horários permitidos para treino (formato HH:MM em string, ex: "09:00", "12:00")
+  startTime String? // Horário inicial permitido (ex: "09:00")
+  endTime   String? // Horário final permitido (ex: "12:00")
 
   // Campo adicional (mantido do banco existente)
   status String?
@@ -250,4 +255,19 @@ model WithdrawalRequest {
   @@index([userId])
   @@index([status])
   @@map("withdrawal_requests")
+}
+
+model NutritionAnalysis {
+  id         String   @id @default(uuid())
+  userId     String
+  imageUrl   String?  // URL da imagem analisada (opcional)
+  analysis   String   @db.Text // JSON com a análise completa
+  pointsAwarded Int    @default(0) // Pontos concedidos nesta análise
+  created_at DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([created_at])
+  @@map("nutrition_analyses")
 }

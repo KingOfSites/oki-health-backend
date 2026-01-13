@@ -19,12 +19,13 @@ if (!hasFirebaseConfig) {
 // 🔥 2. Limpar e normalizar chave (se existir)
 // -------------------------------
 const cleanPrivateKey = (env.FIREBASE_PRIVATE_KEY || "")
-  .replace(/\\n/g, "\n")        // converte \n literal para quebra de linha real
-  .replace(/\\\\n/g, "\n")      // trata caso de double escape
-  .replace(/\r/g, "")           // remove retornos de carro do Windows
-  .replace(/"/g, "")            // remove aspas indesejadas
-  .replace(/'/g, "")            // remove aspas simples
-  .replace(/^\s+|\s+$/gm, "")   // remove espaços no início/fim de cada linha
+  .replace(/\\M/g, "\n")        // corrige erro comum: \M em vez de \n
+  .replace(/\\n/g, "\n")         // converte \n literal para quebra de linha real
+  .replace(/\\\\n/g, "\n")       // trata caso de double escape
+  .replace(/\r/g, "")            // remove retornos de carro do Windows
+  .replace(/"/g, "")             // remove aspas indesejadas
+  .replace(/'/g, "")             // remove aspas simples
+  .replace(/^\s+|\s+$/gm, "")    // remove espaços no início/fim de cada linha
   .trim();
 
 // Validar formato básico da chave privada

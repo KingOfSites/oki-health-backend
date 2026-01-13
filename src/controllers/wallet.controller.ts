@@ -1590,7 +1590,7 @@ export class WalletController {
       // Responder imediatamente ao Mercado Pago (200 OK)
       // para evitar que ele tente reenviar a notificação
       res.status(200).json({ received: true });
-      
+
       // Processar a notificação de forma assíncrona (não bloqueia a resposta)
 
       // Processar a notificação de forma assíncrona (não bloqueia a resposta)

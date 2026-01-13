@@ -266,7 +266,29 @@ function getRecommendedIP(): string | null {
 
 const startServer = async () => {
   try {
-    await prisma.$connect();
+    // Verificar se DATABASE_URL está configurado
+    const databaseUrl = process.env.DATABASE_URL;
+    if (!databaseUrl) {
+      console.error("❌ DATABASE_URL não está configurado no arquivo .env");
+      console.error("   Configure a variável DATABASE_URL no arquivo oki-health-backend/.env");
+      process.exit(1);
+    }
+
+    // Extrair informações da URL do banco para mensagens de erro mais claras
+    const dbUrlMatch = databaseUrl.match(/mysql:\/\/([^:]+):([^@]+)@([^:]+):(\d+)\/(.+)/);
+    const dbHost = dbUrlMatch ? dbUrlMatch[3] : "desconhecido";
+    const dbPort = dbUrlMatch ? dbUrlMatch[4] : "desconhecido";
+
+    console.log(`🔌 Tentando conectar ao banco de dados...`);
+    console.log(`   Host: ${dbHost}:${dbPort}`);
+
+    // Tentar conectar com timeout
+    const connectPromise = prisma.$connect();
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error("Timeout: Conexão com o banco de dados excedeu 10 segundos")), 10000);
+    });
+
+    await Promise.race([connectPromise, timeoutPromise]);
     console.log("✅ Database connected");
 
     // Descobrir IPs da máquina
@@ -302,8 +324,44 @@ const startServer = async () => {
       console.log(`📋 CORS: Permitindo requisições sem origin (React Native)`);
       console.log(`📋 CORS: Modo desenvolvimento - todas as origins permitidas`);
     });
-  } catch (error) {
-    console.error("❌ Failed to start server:", error);
+  } catch (error: any) {
+    console.error("\n❌ Erro ao conectar ao banco de dados:");
+    
+    if (error.code === "P1001") {
+      console.error("   O servidor de banco de dados não está acessível.");
+      const dbUrlMatch = process.env.DATABASE_URL?.match(/mysql:\/\/([^:]+):([^@]+)@([^:]+):(\d+)\/(.+)/);
+      if (dbUrlMatch) {
+        const dbHost = dbUrlMatch[3];
+        const dbPort = dbUrlMatch[4];
+        console.error(`   Tentando conectar em: ${dbHost}:${dbPort}`);
+      }
+      console.error("\n🔧 Possíveis soluções:");
+      console.error("   1. Verifique se o servidor de banco de dados está rodando");
+      console.error("   2. Verifique se o IP e porta estão corretos no arquivo .env");
+      console.error("   3. Se o banco está em um servidor remoto, verifique:");
+      console.error("      - Se o firewall permite conexões na porta do banco");
+      console.error("      - Se o servidor permite conexões remotas");
+      console.error("      - Se você está na mesma rede ou tem acesso VPN");
+      console.error("   4. Para desenvolvimento local, considere usar um banco local");
+      console.error("      ou configurar um túnel SSH se necessário");
+    } else if (error.message?.includes("Timeout")) {
+      console.error("   A conexão demorou muito para responder.");
+      console.error("\n🔧 Possíveis soluções:");
+      console.error("   1. Verifique sua conexão de internet");
+      console.error("   2. O servidor de banco pode estar sobrecarregado");
+      console.error("   3. Verifique se o firewall não está bloqueando a conexão");
+    } else if (error.code === "P1000") {
+      console.error("   Falha na autenticação com o banco de dados.");
+      console.error("\n🔧 Possíveis soluções:");
+      console.error("   1. Verifique se o usuário e senha estão corretos no .env");
+      console.error("   2. Verifique se o usuário tem permissões para acessar o banco");
+    } else {
+      console.error("   Erro:", error.message || error);
+    }
+    
+    console.error("\n📝 Verifique o arquivo .env em oki-health-backend/.env");
+    console.error("   Certifique-se de que DATABASE_URL está configurado corretamente.\n");
+    
     process.exit(1);
   }
 };

@@ -48,6 +48,8 @@ export class ChallengesController {
         return res.status(401).json({ success: false, message: "Não autenticado" });
       }
 
+      console.log("📥 [Create Challenge] Body recebido completo:", JSON.stringify(req.body, null, 2));
+      
       const {
         title,
         description,
@@ -66,7 +68,18 @@ export class ChallengesController {
         minWeight,
         maxWeight,
         requiredActivityLevel,
+        startTime,
+        endTime,
       } = req.body;
+      
+      console.log("📥 [Create Challenge] Horários extraídos do body:", {
+        startTime,
+        endTime,
+        startTimeType: typeof startTime,
+        endTimeType: typeof endTime,
+        startTimeExists: startTime !== undefined,
+        endTimeExists: endTime !== undefined,
+      });
 
       if (!title || !description || !category || !startDate || !endDate) {
         return res.status(400).json({
@@ -75,7 +88,72 @@ export class ChallengesController {
         });
       }
 
-      const data = await ChallengesService.createChallenge({
+      // Processar horários - garantir que sejam strings válidas ou null
+      let processedStartTime: string | null = null;
+      let processedEndTime: string | null = null;
+      
+      // Se startTime foi fornecido, processar
+      if (startTime !== null && startTime !== undefined && startTime !== '') {
+        if (typeof startTime === 'string' && startTime.trim()) {
+          processedStartTime = startTime.trim();
+          // Validar formato HH:MM
+          if (!/^([0-1][0-9]|2[0-3]):([0-5][0-9])$/.test(processedStartTime)) {
+            return res.status(400).json({
+              success: false,
+              message: "Formato de horário inicial inválido. Use HH:MM (ex: 09:00)",
+            });
+          }
+        }
+      }
+      
+      // Se endTime foi fornecido, processar
+      if (endTime !== null && endTime !== undefined && endTime !== '') {
+        if (typeof endTime === 'string' && endTime.trim()) {
+          processedEndTime = endTime.trim();
+          // Validar formato HH:MM
+          if (!/^([0-1][0-9]|2[0-3]):([0-5][0-9])$/.test(processedEndTime)) {
+            return res.status(400).json({
+              success: false,
+              message: "Formato de horário final inválido. Use HH:MM (ex: 12:00)",
+            });
+          }
+        }
+      }
+
+      // Validar que se um horário for fornecido, o outro também deve ser
+      if ((processedStartTime && !processedEndTime) || (!processedStartTime && processedEndTime)) {
+        return res.status(400).json({
+          success: false,
+          message: "Se fornecer horários, deve fornecer tanto o horário inicial quanto o final",
+        });
+      }
+
+      // Validar que o horário final é posterior ao inicial
+      if (processedStartTime && processedEndTime) {
+        const [startHour, startMin] = processedStartTime.split(":").map(Number);
+        const [endHour, endMin] = processedEndTime.split(":").map(Number);
+        const startMinutes = startHour * 60 + startMin;
+        const endMinutes = endHour * 60 + endMin;
+        
+        if (endMinutes <= startMinutes) {
+          return res.status(400).json({
+            success: false,
+            message: "O horário final deve ser posterior ao horário inicial",
+          });
+        }
+      }
+
+      console.log("📝 [Create Challenge] Dados recebidos:", {
+        title,
+        startTime: processedStartTime,
+        endTime: processedEndTime,
+        startTimeType: typeof processedStartTime,
+        endTimeType: typeof processedEndTime,
+        startTimeRaw: startTime,
+        endTimeRaw: endTime,
+      });
+
+      const challengePayload: any = {
         createdById: req.userId,
         title,
         description,
@@ -83,10 +161,10 @@ export class ChallengesController {
         startDate: new Date(startDate),
         endDate: new Date(endDate),
         reward: reward || 0,
-        location,
-        coverUrl,
+        location: location || null,
+        coverUrl: coverUrl || null,
         entryPriceCents: entryPriceCents || 0,
-        maxParticipants,
+        maxParticipants: maxParticipants || null,
         firstPlacePrizeCents: firstPlacePrizeCents || 0,
         secondPlacePrizeCents: secondPlacePrizeCents || 0,
         thirdPlacePrizeCents: thirdPlacePrizeCents || 0,
@@ -94,6 +172,27 @@ export class ChallengesController {
         minWeight: minWeight ? parseFloat(minWeight) : null,
         maxWeight: maxWeight ? parseFloat(maxWeight) : null,
         requiredActivityLevel: requiredActivityLevel || null,
+      };
+      
+      // Adicionar horários apenas se foram fornecidos
+      if (processedStartTime !== null) {
+        challengePayload.startTime = processedStartTime;
+      } else {
+        challengePayload.startTime = null;
+      }
+      
+      if (processedEndTime !== null) {
+        challengePayload.endTime = processedEndTime;
+      } else {
+        challengePayload.endTime = null;
+      }
+
+      const data = await ChallengesService.createChallenge(challengePayload);
+
+      console.log("✅ [Create Challenge] Desafio criado com sucesso:", {
+        id: data.id,
+        startTime: data.startTime,
+        endTime: data.endTime,
       });
 
       return res.status(201).json({ success: true, data });

@@ -260,7 +260,64 @@ FORMATO EXATO:
     console.log("✅ [AI Route] Análise concluída com sucesso");
     console.log("✅ [AI Route] JSON retornado:", JSON.stringify(json, null, 2));
     
-    return res.json(json);
+    // Verificar se já houve uma análise hoje para este usuário
+    let pointsAwarded = 0;
+    let isFirstAnalysisToday = false;
+    
+    try {
+      // Verificar análises de hoje
+      const todayAnalyses = await prisma.$queryRawUnsafe(
+        `SELECT COUNT(*) as count 
+         FROM nutrition_analyses 
+         WHERE userId = ? 
+           AND DATE(created_at) = CURDATE()`,
+        userId
+      ) as any[];
+      
+      const analysisCount = todayAnalyses[0]?.count || 0;
+      isFirstAnalysisToday = analysisCount === 0;
+      
+      // Só adicionar pontos se for a primeira análise do dia
+      if (isFirstAnalysisToday) {
+        const pointsToAdd = 10; // 10 pontos por dia
+        
+        // Adicionar XP ao usuário
+        await prisma.user.update({
+          where: { id: userId },
+          data: {
+            xp: {
+              increment: pointsToAdd,
+            },
+          },
+        });
+        
+        pointsAwarded = pointsToAdd;
+        console.log(`✅ [AI Nutrition] ${pointsToAdd} pontos (XP) adicionados ao usuário (primeira análise do dia)`);
+      } else {
+        console.log(`ℹ️ [AI Nutrition] Usuário já fez ${analysisCount} análise(ões) hoje. Nenhum ponto adicionado.`);
+      }
+      
+      // Salvar registro da análise no banco
+      await prisma.nutritionAnalysis.create({
+        data: {
+          userId,
+          analysis: JSON.stringify(json),
+          pointsAwarded,
+        },
+      });
+      
+      console.log(`✅ [AI Nutrition] Análise salva no banco com ${pointsAwarded} pontos concedidos`);
+    } catch (pointsErr) {
+      console.error("⚠️ [AI Nutrition] Erro ao processar pontos ou salvar análise:", pointsErr);
+      // Não falhar a requisição se não conseguir adicionar pontos
+    }
+    
+    // Retornar análise com informações de pontos
+    return res.json({
+      ...json,
+      pointsEarned: pointsAwarded,
+      isFirstAnalysisToday,
+    });
 
   } catch (err: any) {
     console.error("AI ERROR:", err);
@@ -277,7 +334,7 @@ FORMATO EXATO:
 router.post("/verify-gym", authenticate, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { imageUrl, challengeId, messageId } = req.body;
+    const { imageUrl, challengeId, messageId, messageTime: clientMessageTime } = req.body;
 
     if (!userId) {
       return res.status(401).json({ error: "Usuário não autenticado" });
@@ -291,6 +348,7 @@ router.post("/verify-gym", authenticate, async (req, res) => {
     console.log("🏋️ [AI Verify Gym] imageUrl:", imageUrl.substring(0, 50) + "...");
     console.log("🏋️ [AI Verify Gym] challengeId:", challengeId);
     console.log("🏋️ [AI Verify Gym] messageId:", messageId);
+    console.log("🏋️ [AI Verify Gym] clientMessageTime recebido:", clientMessageTime);
 
     // Buscar informações completas do desafio e da mensagem
     const prisma = (await import("../config/database")).default;
@@ -299,9 +357,9 @@ router.post("/verify-gym", authenticate, async (req, res) => {
     
     if (challengeId) {
       try {
-        // Buscar informações completas do desafio
+        // Buscar informações completas do desafio incluindo horários
         challengeInfo = await prisma.$queryRawUnsafe(
-          `SELECT id, title, description, startDate, endDate, category FROM challenges WHERE id = ?`,
+          `SELECT id, title, description, startDate, endDate, category, startTime, endTime FROM challenges WHERE id = ?`,
           challengeId
         ) as any[];
       } catch (err) {
@@ -309,77 +367,210 @@ router.post("/verify-gym", authenticate, async (req, res) => {
       }
     }
 
-    // Buscar informações da mensagem (horário de criação)
-    if (messageId) {
-      try {
-        messageInfo = await prisma.$queryRawUnsafe(
-          `SELECT id, created_at FROM challenge_chat WHERE id = ?`,
-          messageId
-        ) as any[];
-      } catch (err) {
-        console.warn("⚠️ [AI Verify Gym] Erro ao buscar mensagem:", err);
+    // PRIORIDADE: Se o cliente enviou o horário formatado (o mesmo que aparece na tela), usar ele diretamente
+    // Isso garante que estamos usando exatamente o mesmo horário que o usuário vê
+    let messageTime: string;
+    let messageDate: string;
+    
+    if (clientMessageTime && typeof clientMessageTime === "string" && /^\d{2}:\d{2}$/.test(clientMessageTime)) {
+      // Cliente enviou o horário formatado (ex: "16:34") - USAR DIRETAMENTE SEM CONVERSÃO
+      // Este é o horário EXATO que aparece na interface do usuário
+      messageTime = clientMessageTime.trim();
+      console.log("🕐 [AI Verify Gym] ==========================================");
+      console.log("🕐 [AI Verify Gym] ✅✅✅ USANDO HORÁRIO DO CLIENTE");
+      console.log("🕐 [AI Verify Gym] Horário recebido:", messageTime);
+      console.log("🕐 [AI Verify Gym] Este é o MESMO horário da interface");
+      console.log("🕐 [AI Verify Gym] ⚠️ NÃO FAZER NENHUMA CONVERSÃO");
+      console.log("🕐 [AI Verify Gym] ==========================================");
+      
+      // Buscar a mensagem apenas para pegar a data
+      if (messageId) {
+        try {
+          messageInfo = await prisma.$queryRawUnsafe(
+            `SELECT id, created_at FROM challenge_chat WHERE id = ?`,
+            messageId
+          ) as any[];
+        } catch (err) {
+          console.warn("⚠️ [AI Verify Gym] Erro ao buscar mensagem:", err);
+        }
+      }
+      
+      const message = messageInfo?.[0];
+      if (message && message.created_at) {
+        // Converter a data para o timezone do Brasil usando a mesma lógica do frontend
+        const messageCreatedAtRaw = new Date(message.created_at);
+        const formatter = new Intl.DateTimeFormat("pt-BR", {
+          timeZone: "America/Sao_Paulo",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit"
+        });
+        const parts = formatter.formatToParts(messageCreatedAtRaw);
+        const day = parts.find(p => p.type === "day")?.value || "01";
+        const month = parts.find(p => p.type === "month")?.value || "01";
+        const year = parts.find(p => p.type === "year")?.value || "2024";
+        messageDate = `${day.padStart(2, "0")}/${month.padStart(2, "0")}/${year}`;
+      } else {
+        // Fallback: usar data/hora atual
+        const now = new Date();
+        const formatter = new Intl.DateTimeFormat("pt-BR", {
+          timeZone: "America/Sao_Paulo",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit"
+        });
+        const parts = formatter.formatToParts(now);
+        const day = parts.find(p => p.type === "day")?.value || "01";
+        const month = parts.find(p => p.type === "month")?.value || "01";
+        const year = parts.find(p => p.type === "year")?.value || "2024";
+        messageDate = `${day.padStart(2, "0")}/${month.padStart(2, "0")}/${year}`;
+      }
+    } else {
+      // Fallback: buscar e converter do banco (comportamento anterior)
+      if (messageId) {
+        try {
+          messageInfo = await prisma.$queryRawUnsafe(
+            `SELECT 
+              id, 
+              created_at,
+              DATE_FORMAT(CONVERT_TZ(created_at, @@session.time_zone, 'America/Sao_Paulo'), '%H:%i') as hora_br,
+              DATE_FORMAT(CONVERT_TZ(created_at, @@session.time_zone, 'America/Sao_Paulo'), '%d/%m/%Y') as data_br,
+              CONVERT_TZ(created_at, @@session.time_zone, 'America/Sao_Paulo') as created_at_br
+            FROM challenge_chat WHERE id = ?`,
+            messageId
+          ) as any[];
+        } catch (err) {
+          console.warn("⚠️ [AI Verify Gym] Erro ao buscar com CONVERT_TZ, usando fallback:", err);
+          try {
+            messageInfo = await prisma.$queryRawUnsafe(
+              `SELECT id, created_at FROM challenge_chat WHERE id = ?`,
+              messageId
+            ) as any[];
+          } catch (err2) {
+            console.warn("⚠️ [AI Verify Gym] Erro ao buscar mensagem (fallback):", err2);
+          }
+        }
+      }
+
+      const message = messageInfo?.[0];
+      
+      if (!message || !message.created_at) {
+        console.error("❌ [AI Verify Gym] Mensagem não encontrada ou sem created_at");
+        return res.status(400).json({ 
+          error: "Mensagem não encontrada",
+          verified: false 
+        });
+      }
+      
+      // Se o MySQL retornou hora_br e data_br (já convertidos), usar diretamente
+      if (message.hora_br && message.data_br) {
+        messageTime = message.hora_br;
+        messageDate = message.data_br;
+      } else {
+        // Converter manualmente usando a mesma lógica do frontend
+        const messageCreatedAtRaw = new Date(message.created_at);
+        const formatter = new Intl.DateTimeFormat("pt-BR", {
+          timeZone: "America/Sao_Paulo",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit"
+        });
+        
+        const parts = formatter.formatToParts(messageCreatedAtRaw);
+        const hour = parts.find(p => p.type === "hour")?.value || "00";
+        const minute = parts.find(p => p.type === "minute")?.value || "00";
+        const day = parts.find(p => p.type === "day")?.value || "01";
+        const month = parts.find(p => p.type === "month")?.value || "01";
+        const year = parts.find(p => p.type === "year")?.value || "2024";
+        
+        messageTime = `${hour.padStart(2, "0")}:${minute.padStart(2, "0")}`;
+        messageDate = `${day.padStart(2, "0")}/${month.padStart(2, "0")}/${year}`;
       }
     }
-
-    const challenge = challengeInfo?.[0];
-    const message = messageInfo?.[0];
     
-    // Horário de criação da mensagem (timestamp que aparece abaixo da imagem no chat)
-    const messageCreatedAt = message?.created_at ? new Date(message.created_at) : new Date();
-    const messageTime = messageCreatedAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-    const messageDate = messageCreatedAt.toLocaleDateString("pt-BR");
+    console.log("🕐 [AI Verify Gym] ========== HORÁRIO FINAL ==========");
+    console.log("🕐 [AI Verify Gym] Horário da mensagem (Brasil):", messageTime);
+    console.log("🕐 [AI Verify Gym] Data da mensagem (Brasil):", messageDate);
+    console.log("🕐 [AI Verify Gym] ===================================");
+    
+    const challenge = challengeInfo?.[0];
 
-    // Extrair informações de horário do título/descrição do desafio
+    // Função auxiliar para formatar horário (usada acima)
+    const formatTimeForDisplay = (time: string) => {
+      return time.replace(":", "h");
+    };
+    
+    // Extrair informações de horário do desafio
     let challengeTimeInfo = "";
     let expectedTimeRange = "";
     let extractedTimes: string[] = [];
     
     if (challenge) {
-      const title = challenge.title || "";
-      const description = challenge.description || "";
-      const fullText = `${title} ${description}`;
-      
-      // Procurar por padrões de horário no texto (case insensitive)
-      const timePatterns = [
-        { pattern: /\b(\d{1,2})[h:](\d{2})\s*às?\s*(\d{1,2})[h:](\d{2})\b/gi, format: (m: RegExpMatchArray) => `${m[1]}h${m[2]} às ${m[3]}h${m[4]}` },
-        { pattern: /\b(\d{1,2})[h:](\d{2})\b/g, format: (m: RegExpMatchArray) => `${m[1]}h${m[2]}` },
-        { pattern: /\b(\d{1,2})h\b/g, format: (m: RegExpMatchArray) => `${m[1]}h` },
-        { pattern: /\bàs?\s*(\d{1,2})[h:](\d{2})\b/gi, format: (m: RegExpMatchArray) => `às ${m[1]}h${m[2]}` },
-      ];
-      
-      timePatterns.forEach(({ pattern, format }) => {
-        const matches = fullText.matchAll(pattern);
-        for (const match of matches) {
-          const formatted = format(match);
-          if (!extractedTimes.includes(formatted)) {
-            extractedTimes.push(formatted);
-          }
-        }
-      });
-      
-      // Procurar por períodos do dia
-      const periodPatterns = [
-        { pattern: /\bmanhã\b/gi, label: "manhã" },
-        { pattern: /\btarde\b/gi, label: "tarde" },
-        { pattern: /\bnoite\b/gi, label: "noite" },
-        { pattern: /\bmadrugada\b/gi, label: "madrugada" },
-      ];
-      
-      const foundPeriods: string[] = [];
-      periodPatterns.forEach(({ pattern, label }) => {
-        if (pattern.test(fullText) && !foundPeriods.includes(label)) {
-          foundPeriods.push(label);
-        }
-      });
-      
-      if (extractedTimes.length > 0) {
-        challengeTimeInfo = `Horários mencionados no desafio: ${extractedTimes.join(", ")}`;
-      } else if (foundPeriods.length > 0) {
-        challengeTimeInfo = `Período mencionado no desafio: ${foundPeriods.join(", ")}`;
+      // PRIORIDADE 1: Usar horários do banco de dados (startTime e endTime)
+      if (challenge.startTime && challenge.endTime) {
+        // Converter formato HH:MM para formato legível (ex: "09:00" -> "09h00")
+        extractedTimes.push(`${formatTimeForDisplay(challenge.startTime)} às ${formatTimeForDisplay(challenge.endTime)}`);
+        challengeTimeInfo = `Horários permitidos do desafio: ${challenge.startTime} às ${challenge.endTime}`;
+      } else if (challenge.startTime) {
+        // Apenas horário inicial
+        extractedTimes.push(formatTimeForDisplay(challenge.startTime));
+        challengeTimeInfo = `Horário inicial do desafio: ${challenge.startTime}`;
       }
       
-      // Determinar período do dia baseado no horário da mensagem
-      const messageHour = messageCreatedAt.getHours();
+      // PRIORIDADE 2: Se não houver horários no banco, extrair do texto (fallback)
+      if (extractedTimes.length === 0) {
+        const title = challenge.title || "";
+        const description = challenge.description || "";
+        const fullText = `${title} ${description}`;
+        
+        // Procurar por padrões de horário no texto (case insensitive)
+        // Ordem importa: primeiro procurar intervalos, depois horários individuais
+        const timePatterns = [
+          { pattern: /\b(\d{1,2})[h:](\d{2})\s*às?\s*(\d{1,2})[h:](\d{2})\b/gi, format: (m: RegExpMatchArray) => `${m[1]}h${m[2]} às ${m[3]}h${m[4]}` },
+          { pattern: /\b(\d{1,2})[h:](\d{2})\s*até\s*(\d{1,2})[h:](\d{2})\b/gi, format: (m: RegExpMatchArray) => `${m[1]}h${m[2]} até ${m[3]}h${m[4]}` },
+          { pattern: /\b(\d{1,2})[h:](\d{2})\s*-\s*(\d{1,2})[h:](\d{2})\b/g, format: (m: RegExpMatchArray) => `${m[1]}h${m[2]} - ${m[3]}h${m[4]}` },
+          { pattern: /\b(\d{1,2})[h:](\d{2})\b/g, format: (m: RegExpMatchArray) => `${m[1]}h${m[2]}` },
+          { pattern: /\b(\d{1,2})h\b/g, format: (m: RegExpMatchArray) => `${m[1]}h00` }, // Converter "9h" para "9h00"
+          { pattern: /\bàs?\s*(\d{1,2})[h:](\d{2})\b/gi, format: (m: RegExpMatchArray) => `às ${m[1]}h${m[2]}` },
+        ];
+        
+        timePatterns.forEach(({ pattern, format }) => {
+          const matches = fullText.matchAll(pattern);
+          for (const match of matches) {
+            const formatted = format(match);
+            if (!extractedTimes.includes(formatted)) {
+              extractedTimes.push(formatted);
+            }
+          }
+        });
+        
+        // Procurar por períodos do dia
+        const periodPatterns = [
+          { pattern: /\bmanhã\b/gi, label: "manhã" },
+          { pattern: /\btarde\b/gi, label: "tarde" },
+          { pattern: /\bnoite\b/gi, label: "noite" },
+          { pattern: /\bmadrugada\b/gi, label: "madrugada" },
+        ];
+        
+        const foundPeriods: string[] = [];
+        periodPatterns.forEach(({ pattern, label }) => {
+          if (pattern.test(fullText) && !foundPeriods.includes(label)) {
+            foundPeriods.push(label);
+          }
+        });
+        
+        if (extractedTimes.length > 0) {
+          challengeTimeInfo = `Horários mencionados no desafio: ${extractedTimes.join(", ")}`;
+        } else if (foundPeriods.length > 0) {
+          challengeTimeInfo = `Período mencionado no desafio: ${foundPeriods.join(", ")}`;
+        }
+      }
+      
+      // Determinar período do dia baseado no horário da mensagem (timezone do Brasil)
+      const messageHour = parseInt(messageTime.split(":")[0]) || 0;
       let timeOfDay = "";
       if (messageHour >= 5 && messageHour < 12) {
         timeOfDay = "manhã";
@@ -557,55 +748,152 @@ router.post("/verify-gym", authenticate, async (req, res) => {
     let timeVerification = true;
     let timeVerificationReason = "";
     
-    if (challenge && message) {
-      const messageHour = messageCreatedAt.getHours();
-      const messageMinute = messageCreatedAt.getMinutes();
+    if (challenge) {
+      // Usar horário no timezone do Brasil
+      const timeParts = messageTime.split(":");
+      const messageHour = parseInt(timeParts[0]) || 0;
+      const messageMinute = parseInt(timeParts[1]) || 0;
       const messageTimeMinutes = messageHour * 60 + messageMinute;
       
       // Verificar se a mensagem foi enviada durante o período do desafio (datas)
+      // Comparar apenas as datas (sem horário) no timezone do Brasil
       const startDate = new Date(challenge.startDate);
       const endDate = new Date(challenge.endDate);
       
+      // Ajustar endDate para incluir o dia inteiro (até 23:59:59)
+      endDate.setHours(23, 59, 59, 999);
+      
+      // Extrair data da messageDate (formato DD/MM/YYYY)
+      const dateParts = messageDate.split("/");
+      const day = dateParts[0] || "01";
+      const month = dateParts[1] || "01";
+      const year = dateParts[2] || "2024";
+      
+      // Comparar apenas a data (sem horário) da mensagem
+      const messageDateOnlyBR = new Date(`${year}-${month}-${day}T00:00:00-03:00`);
+      const startDateOnly = new Date(startDate);
+      startDateOnly.setHours(0, 0, 0, 0);
+      const endDateOnly = new Date(endDate);
+      endDateOnly.setHours(23, 59, 59, 999);
+      
       console.log("📅 [AI Verify Gym] Período do desafio:", startDate.toLocaleDateString("pt-BR"), "até", endDate.toLocaleDateString("pt-BR"));
       console.log("📅 [AI Verify Gym] Data da mensagem:", messageDate);
+      console.log("📅 [AI Verify Gym] Comparação de datas:", {
+        messageDateOnlyBR: messageDateOnlyBR.toISOString(),
+        startDateOnly: startDateOnly.toISOString(),
+        endDateOnly: endDateOnly.toISOString()
+      });
       
-      if (messageCreatedAt < startDate || messageCreatedAt > endDate) {
+      if (messageDateOnlyBR < startDateOnly || messageDateOnlyBR > endDateOnly) {
         timeVerification = false;
         timeVerificationReason = `Mensagem enviada fora do período do desafio (${startDate.toLocaleDateString("pt-BR")} até ${endDate.toLocaleDateString("pt-BR")})`;
         console.log("❌ [AI Verify Gym] Mensagem fora do período do desafio");
+      } else if (challenge.startTime && challenge.endTime) {
+        // PRIORIDADE 1: Usar horários do banco de dados diretamente
+        const [startHour, startMin] = challenge.startTime.split(":").map(Number);
+        const [endHour, endMin] = challenge.endTime.split(":").map(Number);
+        const startMinutes = startHour * 60 + startMin;
+        const endMinutes = endHour * 60 + endMin;
+        
+        console.log(`🕐 [AI Verify Gym] Horários do banco: ${challenge.startTime} às ${challenge.endTime} (${startMinutes}min - ${endMinutes}min)`);
+        console.log(`🕐 [AI Verify Gym] Horário da mensagem extraído: ${messageTime}`);
+        console.log(`🕐 [AI Verify Gym] Horário da mensagem em minutos: ${messageTimeMinutes} minutos`);
+        console.log(`🕐 [AI Verify Gym] Comparação: ${messageTimeMinutes} >= ${startMinutes} && ${messageTimeMinutes} <= ${endMinutes}`);
+        
+        if (messageTimeMinutes >= startMinutes && messageTimeMinutes <= endMinutes) {
+          console.log(`✅ [AI Verify Gym] Horário ${messageTime} está dentro do intervalo permitido ${challenge.startTime} às ${challenge.endTime}`);
+        } else {
+          timeVerification = false;
+          const startTimeFormatted = `${startHour.toString().padStart(2, "0")}h${startMin.toString().padStart(2, "0")}`;
+          const endTimeFormatted = `${endHour.toString().padStart(2, "0")}h${endMin.toString().padStart(2, "0")}`;
+          timeVerificationReason = `Horário da mensagem (${messageTime}) não corresponde aos horários do desafio (${startTimeFormatted} às ${endTimeFormatted})`;
+          console.log(`❌ [AI Verify Gym] Horário ${messageTime} (${messageTimeMinutes}min) está fora do intervalo permitido ${challenge.startTime} (${startMinutes}min) às ${challenge.endTime} (${endMinutes}min)`);
+        }
       } else if (extractedTimes.length > 0) {
-        // Se há horários específicos mencionados, verificar se o horário da mensagem está próximo
+        // Se há horários específicos mencionados, verificar se o horário da mensagem está dentro do intervalo
         let matchesTime = false;
-        const tolerance = 60; // 1 hora de tolerância
+        const tolerance = 30; // 30 minutos de tolerância para horários exatos
         
         console.log("🕐 [AI Verify Gym] Verificando horários específicos...");
+        console.log("🕐 [AI Verify Gym] Horários extraídos:", extractedTimes);
+        console.log("🕐 [AI Verify Gym] Horário da mensagem:", messageTime, `(${messageTimeMinutes} minutos)`);
+        
+        // Extrair todos os horários numéricos de todos os padrões encontrados
+        const allTimeMinutes: number[] = [];
         
         for (const timeStr of extractedTimes) {
-          // Extrair horários do formato "18h30" ou "18h30 às 20h"
-          const timeMatch = timeStr.match(/(\d{1,2})h(\d{2})?/g);
-          if (timeMatch) {
-            for (const time of timeMatch) {
-              const parts = time.replace("h", ":").split(":");
-              const hour = parseInt(parts[0]);
-              const minute = parts[1] ? parseInt(parts[1]) : 0;
-              const timeMinutes = hour * 60 + minute;
+          // Verificar se é um intervalo (contém "às" ou "até")
+          if (timeStr.includes("às") || timeStr.includes("até") || timeStr.includes("a")) {
+            // Extrair horários do formato "09h00 às 12h00" ou "09h às 12h"
+            const intervalMatch = timeStr.match(/(\d{1,2})h(\d{2})?/g);
+            if (intervalMatch && intervalMatch.length >= 2) {
+              const startTime = intervalMatch[0];
+              const endTime = intervalMatch[1];
               
-              console.log(`🕐 [AI Verify Gym] Comparando: ${messageTimeMinutes}min (${messageTime}) vs ${timeMinutes}min (${hour}h${minute.toString().padStart(2, "0")})`);
+              const startParts = startTime.replace("h", ":").split(":");
+              const startHour = parseInt(startParts[0]);
+              const startMinute = startParts[1] ? parseInt(startParts[1]) : 0;
+              const startMinutes = startHour * 60 + startMinute;
               
-              // Verificar se está dentro da tolerância
-              if (Math.abs(messageTimeMinutes - timeMinutes) <= tolerance) {
+              const endParts = endTime.replace("h", ":").split(":");
+              const endHour = parseInt(endParts[0]);
+              const endMinute = endParts[1] ? parseInt(endParts[1]) : 0;
+              const endMinutes = endHour * 60 + endMinute;
+              
+              console.log(`🕐 [AI Verify Gym] Intervalo encontrado: ${startHour}h${startMinute.toString().padStart(2, "0")} às ${endHour}h${endMinute.toString().padStart(2, "0")} (${startMinutes}min - ${endMinutes}min)`);
+              
+              // Verificar se o horário da mensagem está dentro do intervalo
+              if (messageTimeMinutes >= startMinutes && messageTimeMinutes <= endMinutes) {
                 matchesTime = true;
-                console.log("✅ [AI Verify Gym] Horário corresponde!");
+                console.log(`✅ [AI Verify Gym] Horário ${messageTime} está dentro do intervalo ${startHour}h${startMinute.toString().padStart(2, "0")} às ${endHour}h${endMinute.toString().padStart(2, "0")}`);
                 break;
               }
             }
+          } else {
+            // Horário único - extrair e adicionar à lista
+            const timeMatch = timeStr.match(/(\d{1,2})h(\d{2})?/g);
+            if (timeMatch) {
+              for (const time of timeMatch) {
+                const parts = time.replace("h", ":").split(":");
+                const hour = parseInt(parts[0]);
+                const minute = parts[1] ? parseInt(parts[1]) : 0;
+                const timeMinutes = hour * 60 + minute;
+                allTimeMinutes.push(timeMinutes);
+              }
+            }
           }
-          if (matchesTime) break;
+        }
+        
+        // Se não encontrou intervalo, verificar se há múltiplos horários únicos
+        // Nesse caso, considerar como intervalo entre o menor e o maior
+        if (!matchesTime && allTimeMinutes.length > 0) {
+          if (allTimeMinutes.length === 1) {
+            // Apenas um horário - usar tolerância
+            const targetTime = allTimeMinutes[0];
+            if (Math.abs(messageTimeMinutes - targetTime) <= tolerance) {
+              matchesTime = true;
+              console.log(`✅ [AI Verify Gym] Horário ${messageTime} está próximo de ${Math.floor(targetTime / 60)}h${(targetTime % 60).toString().padStart(2, "0")} (tolerância: ${tolerance}min)`);
+            }
+          } else {
+            // Múltiplos horários - considerar como intervalo
+            const minTime = Math.min(...allTimeMinutes);
+            const maxTime = Math.max(...allTimeMinutes);
+            
+            console.log(`🕐 [AI Verify Gym] Múltiplos horários detectados: intervalo de ${Math.floor(minTime / 60)}h${(minTime % 60).toString().padStart(2, "0")} até ${Math.floor(maxTime / 60)}h${(maxTime % 60).toString().padStart(2, "0")}`);
+            
+            if (messageTimeMinutes >= minTime && messageTimeMinutes <= maxTime) {
+              matchesTime = true;
+              console.log(`✅ [AI Verify Gym] Horário ${messageTime} está dentro do intervalo entre os horários permitidos`);
+            }
+          }
         }
         
         if (!matchesTime) {
           timeVerification = false;
-          timeVerificationReason = `Horário da mensagem (${messageTime}) não corresponde aos horários do desafio (${extractedTimes.join(", ")})`;
+          const timeRange = extractedTimes.length > 1 
+            ? `entre ${extractedTimes.join(" e ")}`
+            : extractedTimes.join(", ");
+          timeVerificationReason = `Horário da mensagem (${messageTime}) não corresponde aos horários do desafio (${timeRange})`;
           console.log("❌ [AI Verify Gym] Horário não corresponde aos horários do desafio");
         } else {
           console.log("✅ [AI Verify Gym] Horário corresponde aos horários do desafio");
@@ -640,7 +928,7 @@ router.post("/verify-gym", authenticate, async (req, res) => {
         
         console.log("✅ [AI Verify Gym] Status atualizado no banco:", status);
         
-        // Se a foto foi verificada, adicionar pontos ao participante
+        // Se a foto foi verificada, adicionar pontos ao participante (1 ponto por dia)
         if (finalVerified && userId) {
           try {
             // Verificar se o participante existe
@@ -651,17 +939,37 @@ router.post("/verify-gym", authenticate, async (req, res) => {
             ) as any[];
             
             if (participant && participant.length > 0) {
-              // Adicionar 10 pontos por foto verificada
-              const pointsToAdd = 10;
-              await prisma.$executeRawUnsafe(
-                `UPDATE challenge_participants 
-                 SET points = points + ? 
-                 WHERE userId = ? AND challengeId = ?`,
-                pointsToAdd,
+              // Verificar se já houve uma verificação hoje para este participante neste desafio
+              // Buscar verificações de hoje (comparar apenas a data, ignorando horário)
+              // Usar DATE() para comparar apenas a parte da data
+              const todayVerifications = await prisma.$queryRawUnsafe(
+                `SELECT COUNT(*) as count 
+                 FROM challenge_chat 
+                 WHERE userId = ? 
+                   AND challengeId = ? 
+                   AND verificationStatus = 'verified' 
+                   AND DATE(verifiedAt) = CURDATE()`,
                 userId,
                 challengeId
-              );
-              console.log(`✅ [AI Verify Gym] ${pointsToAdd} pontos adicionados ao participante`);
+              ) as any[];
+              
+              const verificationCount = todayVerifications[0]?.count || 0;
+              
+              // Só adicionar ponto se for a primeira verificação do dia
+              if (verificationCount === 0) {
+                const pointsToAdd = 1; // 1 ponto por dia
+                await prisma.$executeRawUnsafe(
+                  `UPDATE challenge_participants 
+                   SET points = points + ? 
+                   WHERE userId = ? AND challengeId = ?`,
+                  pointsToAdd,
+                  userId,
+                  challengeId
+                );
+                console.log(`✅ [AI Verify Gym] ${pointsToAdd} ponto adicionado ao participante (primeira verificação do dia)`);
+              } else {
+                console.log(`ℹ️ [AI Verify Gym] Participante já recebeu ponto hoje (${verificationCount} verificação(ões) hoje). Não adicionando mais pontos.`);
+              }
             }
           } catch (pointsErr) {
             console.error("⚠️ [AI Verify Gym] Erro ao adicionar pontos:", pointsErr);

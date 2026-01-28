@@ -88,7 +88,9 @@ export class ChallengeChatController {
         message: msg.message,
         imageUrl: msg.imageUrl ?? null,
         created_at: msg.created_at,
-        verificationStatus: msg.verificationStatus ?? "pending",
+        // Só definir verificationStatus se houver imagem/vídeo
+        // Mensagens de texto puro não precisam de verificação
+        verificationStatus: msg.imageUrl ? (msg.verificationStatus ?? "pending") : null,
         verifiedAt: msg.verifiedAt ?? null,
         verificationReason: msg.verificationReason ?? null,
       }));
@@ -108,20 +110,26 @@ export class ChallengeChatController {
     try {
       const userId = (req as any).userId; // vindo do middleware auth
       const { challengeId } = req.params;
-      const { message, imageUrl } = req.body;
+      const { message, imageUrl, videoUrl } = req.body;
+      
+      // Usar videoUrl se fornecido, senão usar imageUrl
+      const mediaUrl = videoUrl || imageUrl;
 
       if (!message || !message.trim()) {
-        if (!imageUrl) {
-          return res.status(400).json({ error: "Mensagem ou imagem é obrigatória" });
+        if (!mediaUrl) {
+          return res.status(400).json({ error: "Mensagem ou mídia (imagem/vídeo) é obrigatória" });
         }
       }
 
-      // Inserir mensagem com ou sem imageUrl
+      // Inserir mensagem com ou sem mídia
       const messageId = require("crypto").randomUUID();
       
-      if (imageUrl) {
+      if (mediaUrl) {
+        const isVideo = !!videoUrl;
+        const mediaType = isVideo ? "vídeo" : "imagem";
         // Tentar inserir com imageUrl e campos de verificação (URL do Firebase)
-        console.log(`[Chat] Tentando salvar mensagem com imagem: ${imageUrl.substring(0, 50)}...`);
+        // Nota: vídeos também são salvos em imageUrl por enquanto (pode ser expandido no futuro)
+        console.log(`[Chat] Tentando salvar mensagem com ${mediaType}: ${mediaUrl.substring(0, 50)}...`);
         try {
           await prisma.$executeRawUnsafe(
             `INSERT INTO challenge_chat (id, userId, challengeId, message, imageUrl, verificationStatus, created_at) 
@@ -130,14 +138,21 @@ export class ChallengeChatController {
             userId,
             challengeId,
             message || "",
-            imageUrl
+            mediaUrl
           );
-          console.log(`[Chat] ✅ Mensagem com imagem salva com sucesso!`);
+          console.log(`[Chat] ✅ Mensagem com ${mediaType} salva com sucesso!`);
           
           // Chamar verificação de IA de forma assíncrona (não bloquear resposta)
+          // Para vídeos, usar verificação específica de pesagem
           setImmediate(async () => {
             try {
-              console.log(`[Chat] 🤖 Iniciando verificação de IA para mensagem ${messageId}...`);
+              if (isVideo) {
+                console.log(`[Chat] 🤖 Iniciando verificação de vídeo de pesagem para mensagem ${messageId}...`);
+                // TODO: Implementar verificação específica para vídeo de pesagem
+                // Por enquanto, usar a mesma verificação de imagem
+              } else {
+                console.log(`[Chat] 🤖 Iniciando verificação de IA para mensagem ${messageId}...`);
+              }
               const env = (await import("../config/env")).default;
               const token = req.headers.authorization?.replace("Bearer ", "");
               
@@ -180,16 +195,17 @@ export class ChallengeChatController {
 
               // Usar URL do backend configurada no env ou localhost como fallback
               const baseUrl = env.BACKEND_URL || `http://192.168.1.6:${env.PORT || 3005}`;
-              const verifyUrl = `${baseUrl}/api/ai/verify-gym`;
+              const verifyEndpoint = isVideo ? `${baseUrl}/api/ai/verify-weight-video` : `${baseUrl}/api/ai/verify-gym`;
               
-              const verifyResponse = await fetch(verifyUrl, {
+              const verifyResponse = await fetch(verifyEndpoint, {
                 method: "POST",
                 headers: {
                   "Content-Type": "application/json",
                   "Authorization": `Bearer ${token}`,
                 },
                 body: JSON.stringify({
-                  imageUrl,
+                  imageUrl: mediaUrl,
+                  videoUrl: isVideo ? mediaUrl : undefined,
                   challengeId,
                   messageId,
                   ...(messageTimeFormatted && { messageTime: messageTimeFormatted }), // Enviar o horário formatado (mesmo da interface)

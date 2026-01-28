@@ -453,9 +453,47 @@ export class ChallengePaymentController {
         console.error(err);
       }
 
+      // Verificar se é erro específico de PIX não habilitado
+      const errorMessage = err?.message || "";
+      const errorCode = err?.cause?.[0]?.code;
+      const isPixKeyNotEnabled = 
+        errorMessage.includes("Collector user without key enabled for QR") ||
+        errorMessage.includes("key enabled for QR") ||
+        errorCode === 13253;
+
+      // Tratamento específico para erro de chave PIX não habilitada
+      if (isPixKeyNotEnabled) {
+        console.error("⚠️ [PIX] Chave PIX não habilitada na conta do Mercado Pago");
+        console.error("   Para habilitar:");
+        console.error("   1. Acesse https://www.mercadopago.com.br/developers/panel");
+        console.error("   2. Vá em 'Suas integrações' > 'Configurações'");
+        console.error("   3. Habilite 'Chave PIX' na sua conta");
+        console.error("   4. Ou configure uma chave PIX no painel do Mercado Pago");
+        
+        return res.status(400).json({
+          success: false,
+          message: "Pagamento PIX não disponível no momento",
+          error: "A chave PIX não está habilitada na conta do Mercado Pago. Entre em contato com o suporte ou use pagamento com cartão.",
+          errorCode: "PIX_KEY_NOT_ENABLED",
+          details: "Para habilitar PIX, acesse o painel do Mercado Pago e configure uma chave PIX na sua conta.",
+        });
+      }
+
+      // Tratamento para outros erros do Mercado Pago
+      if (err?.status === 400 || err?.response?.status === 400) {
+        const mpError = err?.cause?.[0] || err?.response?.data;
+        return res.status(400).json({
+          success: false,
+          message: mpError?.description || err?.message || "Erro ao processar pagamento no Mercado Pago",
+          error: err?.message,
+          errorCode: mpError?.code || "MP_ERROR",
+        });
+      }
+
       return res.status(500).json({
         success: false,
-        message: "Erro ao iniciar pagamento",
+        message: "Erro ao iniciar pagamento. Tente novamente mais tarde.",
+        error: err?.message,
       });
     }
   }

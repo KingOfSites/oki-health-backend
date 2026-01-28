@@ -70,6 +70,8 @@ export class ChallengesController {
         requiredActivityLevel,
         startTime,
         endTime,
+        isPublic,
+        frequency,
       } = req.body;
       
       console.log("📥 [Create Challenge] Horários extraídos do body:", {
@@ -86,6 +88,67 @@ export class ChallengesController {
           success: false,
           message: "Campos obrigatórios: title, description, category, startDate, endDate",
         });
+      }
+
+      // Validar título ofensivo/discriminatório
+      const validateTitleContent = (titleText: string): { valid: boolean; message?: string } => {
+        const offensiveWords = [
+          // Lista de palavras ofensivas (pode ser expandida)
+          "idiota", "burro", "estúpido", "imbecil", "retardado", "deficiente",
+          "gordo", "magro", "feio", "nojento", "horrível",
+          "viado", "bicha", "sapatão", "traveco", "travesti",
+          "puta", "prostituta", "vagabunda",
+          "preto", "negro", "branco", "amarelo", // Contexto pode variar
+        ];
+        
+        const titleLower = titleText.toLowerCase().trim();
+        for (const word of offensiveWords) {
+          if (titleLower.includes(word)) {
+            return {
+              valid: false,
+              message: "O título contém palavras inapropriadas ou discriminatórias. Por favor, use um título respeitoso e inclusivo.",
+            };
+          }
+        }
+        
+        return { valid: true };
+      };
+
+      const titleValidation = validateTitleContent(title);
+      if (!titleValidation.valid) {
+        return res.status(400).json({
+          success: false,
+          message: titleValidation.message || "Título contém palavras inapropriadas",
+        });
+      }
+
+      // Validar que a data de início é a partir do dia seguinte
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const startDateObj = new Date(startDate);
+      startDateObj.setHours(0, 0, 0, 0);
+      
+      // Calcular diferença em dias
+      const diffTime = startDateObj.getTime() - today.getTime();
+      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+      
+      // A data deve ser pelo menos 1 dia no futuro (amanhã ou depois)
+      if (diffDays < 1) {
+        return res.status(400).json({
+          success: false,
+          message: "A data de início deve ser a partir de amanhã",
+        });
+      }
+
+      // Validar número mínimo de participantes (mínimo 2)
+      if (maxParticipants !== null && maxParticipants !== undefined) {
+        const maxParticipantsNum = parseInt(maxParticipants);
+        if (isNaN(maxParticipantsNum) || maxParticipantsNum < 2) {
+          return res.status(400).json({
+            success: false,
+            message: "O número mínimo de participantes é 2",
+          });
+        }
       }
 
       // Processar horários - garantir que sejam strings válidas ou null
@@ -145,6 +208,9 @@ export class ChallengesController {
 
       console.log("📝 [Create Challenge] Dados recebidos:", {
         title,
+        isPublic,
+        frequency,
+        maxParticipants,
         startTime: processedStartTime,
         endTime: processedEndTime,
         startTimeType: typeof processedStartTime,
@@ -164,7 +230,7 @@ export class ChallengesController {
         location: location || null,
         coverUrl: coverUrl || null,
         entryPriceCents: entryPriceCents || 0,
-        maxParticipants: maxParticipants || null,
+        maxParticipants: maxParticipants ? parseInt(maxParticipants) : null,
         firstPlacePrizeCents: firstPlacePrizeCents || 0,
         secondPlacePrizeCents: secondPlacePrizeCents || 0,
         thirdPlacePrizeCents: thirdPlacePrizeCents || 0,
@@ -172,6 +238,8 @@ export class ChallengesController {
         minWeight: minWeight ? parseFloat(minWeight) : null,
         maxWeight: maxWeight ? parseFloat(maxWeight) : null,
         requiredActivityLevel: requiredActivityLevel || null,
+        isPublic: isPublic !== undefined ? Boolean(isPublic) : true, // Público por padrão
+        frequency: frequency || "daily", // Frequência de registros
       };
       
       // Adicionar horários apenas se foram fornecidos

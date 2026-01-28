@@ -10,12 +10,12 @@ const router = Router();
 const upload = multer({
   storage: multer.memoryStorage(), // Armazena temporariamente na memória
   limits: {
-    fileSize: 5 * 1024 * 1024, // 5MB
+    fileSize: 50 * 1024 * 1024, // 50MB (aumentado para suportar vídeos)
   },
 });
 
-// Rota para upload de imagens do chat do desafio
-// As imagens são salvas no Firebase Storage na pasta "chat/"
+// Rota para upload de imagens e vídeos do chat do desafio
+// As imagens/vídeos são salvas no Firebase Storage na pasta "chat/"
 router.post("/upload", authenticate, upload.single("file"), async (req, res) => {
   try {
     if (!req.file) {
@@ -23,7 +23,9 @@ router.post("/upload", authenticate, upload.single("file"), async (req, res) => 
     }
 
     const file = req.file;
-    console.log(`[Chat Upload] 📤 Recebendo imagem do chat: ${file.originalname} (${(file.size / 1024).toFixed(2)} KB)`);
+    const isVideo = file.mimetype.startsWith("video/");
+    const mediaType = isVideo ? "vídeo" : "imagem";
+    console.log(`[Chat Upload] 📤 Recebendo ${mediaType} do chat: ${file.originalname} (${(file.size / 1024).toFixed(2)} KB)`);
 
     // Verificar se Firebase Storage está configurado
     if (!firebaseStorage) {
@@ -68,10 +70,11 @@ router.post("/upload", authenticate, upload.single("file"), async (req, res) => 
     return res.json({ 
       url,
       success: true,
-      message: "Imagem salva no Firebase Storage com sucesso",
+      message: `${mediaType === "vídeo" ? "Vídeo" : "Imagem"} salva no Firebase Storage com sucesso`,
       firebase: true,
       bucket: bucket.name,
-      path: fileName
+      path: fileName,
+      mediaType: isVideo ? "video" : "image"
     });
 
   } catch (err: any) {

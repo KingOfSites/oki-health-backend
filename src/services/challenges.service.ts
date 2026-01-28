@@ -306,6 +306,8 @@ export class ChallengesService {
       requiredActivityLevel: challengeData.requiredActivityLevel || null,
       startTime: challengeData.startTime, // Já processado acima
       endTime: challengeData.endTime, // Já processado acima
+      isPublic: challengeData.isPublic !== undefined ? Boolean(challengeData.isPublic) : true,
+      frequency: challengeData.frequency || "daily",
     };
     
     // Garantir explicitamente que startTime e endTime estejam no objeto

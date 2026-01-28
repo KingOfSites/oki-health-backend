@@ -1016,4 +1016,172 @@ router.post("/verify-gym", authenticate, async (req, res) => {
   }
 });
 
+// ====================================
+// 🔥 POST /api/ai/verify-weight-video (VERIFICAR VÍDEO DE PESAGEM)
+// ====================================
+router.post("/verify-weight-video", authenticate, async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const { videoUrl, challengeId, messageId } = req.body;
+
+    if (!userId) {
+      return res.status(401).json({ error: "Usuário não autenticado" });
+    }
+
+    if (!videoUrl) {
+      return res.status(400).json({ error: "URL do vídeo não enviada" });
+    }
+
+    console.log("⚖️ [AI Verify Weight Video] Iniciando verificação de vídeo de pesagem...");
+    console.log("⚖️ [AI Verify Weight Video] videoUrl:", videoUrl.substring(0, 50) + "...");
+    console.log("⚖️ [AI Verify Weight Video] challengeId:", challengeId);
+    console.log("⚖️ [AI Verify Weight Video] messageId:", messageId);
+
+    const prisma = (await import("../config/database")).default;
+    
+    // Buscar peso atual do usuário
+    const userData = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { peso: true, name: true },
+    });
+
+    const currentWeight = userData?.peso || null;
+
+    // NOTA: Para análise completa de vídeo com IA, seria necessário:
+    // 1. Extrair frames do vídeo usando ffmpeg ou similar
+    // 2. Enviar os frames para análise da OpenAI Vision API
+    // 3. Combinar os resultados dos múltiplos frames
+    
+    // Por enquanto, usando verificação simplificada baseada em critérios básicos
+    // Em produção, implementar extração de frames com ffmpeg
+
+    // Verificar se a URL do vídeo é acessível
+    try {
+      const videoResponse = await fetch(videoUrl, { method: "HEAD" });
+      if (!videoResponse.ok) {
+        throw new Error("Vídeo não acessível");
+      }
+    } catch (err) {
+      console.error("❌ [AI Verify Weight Video] Erro ao verificar vídeo:", err);
+      return res.status(400).json({ 
+        error: "Erro ao processar vídeo",
+        verified: false,
+        reason: "Não foi possível acessar o vídeo para análise"
+      });
+    }
+
+    // NOTA: A OpenAI Vision API não suporta vídeos diretamente, apenas imagens
+    // Para análise completa de vídeo, seria necessário:
+    // 1. Extrair frames do vídeo usando ffmpeg ou similar
+    // 2. Enviar os frames para análise
+    // 3. Combinar os resultados
+    
+    // Solução temporária: Verificação simplificada baseada em critérios básicos
+    // Em produção, implementar extração de frames com ffmpeg
+    console.log("⚖️ [AI Verify Weight Video] Usando verificação simplificada");
+    console.log("⚠️ [AI Verify Weight Video] Para análise completa, implementar extração de frames com ffmpeg");
+    
+    // Por enquanto, vamos fazer uma verificação básica:
+    // - Verificar se a URL é válida
+    // - Verificar se o usuário tem peso registrado (opcional)
+    // - Aprovar com confiança moderada
+    
+    // Em produção, substituir por extração de frames e análise real
+    // Para implementar análise completa:
+    // 1. Instalar: npm install fluent-ffmpeg @ffmpeg-installer/ffmpeg
+    // 2. Extrair frames do vídeo
+    // 3. Enviar frames para análise da OpenAI Vision API
+    
+    // NOTA IMPORTANTE: A verificação de vídeo requer extração de frames para análise real
+    // Como a OpenAI Vision API não suporta vídeos diretamente, não podemos fazer análise real
+    // Por segurança, vamos REJEITAR por padrão até que seja implementada extração de frames
+    
+    // ⚠️ VERIFICAÇÃO TEMPORÁRIA: Rejeitar todos os vídeos até implementar análise real
+    // Para implementar análise completa:
+    // 1. Instalar: npm install fluent-ffmpeg @ffmpeg-installer/ffmpeg
+    // 2. Extrair frames do vídeo (pelo menos 3-5 frames em momentos diferentes)
+    // 3. Enviar frames para análise da OpenAI Vision API
+    // 4. Combinar resultados dos múltiplos frames
+    
+    console.log("⚖️ [AI Verify Weight Video] Verificação real requer extração de frames - rejeitando por segurança");
+    console.log("⚠️ [AI Verify Weight Video] Para aprovar vídeos, implementar extração de frames com ffmpeg");
+    
+    // Rejeitar por padrão até implementar análise real
+    const verificationResult = {
+      isScale: false, // Não podemos verificar sem análise de frames
+      weightVisible: false, // Não podemos verificar sem análise de frames
+      detectedWeight: null,
+      confidence: 0.3, // Baixa confiança - não foi analisado
+      reason: "Verificação automática de vídeos não está disponível no momento. É necessário implementar extração de frames do vídeo para análise real. Por favor, use uma foto da balança ou aguarde a implementação da análise de vídeo.",
+      verified: false, // Rejeitar por padrão até análise real
+    };
+    
+    console.log("⚖️ [AI Verify Weight Video] Resultado da verificação (rejeitado por segurança):", verificationResult);
+
+    const json = verificationResult;
+    const finalVerified = false; // Sempre rejeitar até implementar análise real
+
+    // Atualizar status no banco
+    if (messageId) {
+      try {
+        await prisma.$executeRawUnsafe(
+          `UPDATE challenge_chat 
+           SET verificationStatus = ?, 
+               verifiedAt = ${finalVerified ? "NOW()" : "NULL"},
+               verificationReason = ?
+           WHERE id = ?`,
+          finalVerified ? "verified" : "rejected",
+          json.reason || (finalVerified ? "Vídeo de pesagem verificado com sucesso" : "Vídeo não atende aos critérios de verificação"),
+          messageId
+        );
+
+        // Se verificado, adicionar pontos e atualizar peso do usuário
+        if (finalVerified && json.detectedWeight) {
+          try {
+            // Atualizar peso do usuário
+            await prisma.user.update({
+              where: { id: userId },
+              data: { peso: json.detectedWeight },
+            });
+
+            // Adicionar pontos ao participante do desafio (10 pontos por pesagem verificada)
+            if (challengeId) {
+              await prisma.$executeRawUnsafe(
+                `UPDATE challenge_participants 
+                 SET points = points + 10, 
+                     progress = LEAST(progress + 2, 100)
+                 WHERE userId = ? AND challengeId = ?`,
+                userId,
+                challengeId
+              );
+            }
+          } catch (pointsErr) {
+            console.error("⚠️ [AI Verify Weight Video] Erro ao adicionar pontos:", pointsErr);
+          }
+        }
+      } catch (err) {
+        console.error("⚠️ [AI Verify Weight Video] Erro ao atualizar status no banco:", err);
+      }
+    }
+
+    return res.json({
+      success: true,
+      verified: finalVerified,
+      isScale: json.isScale || false,
+      weightVisible: json.weightVisible || false,
+      detectedWeight: json.detectedWeight || null,
+      confidence: json.confidence || 0,
+      reason: json.reason || "Verificação concluída",
+    });
+
+  } catch (err: any) {
+    console.error("❌ [AI Verify Weight Video] Erro:", err);
+    return res.status(500).json({
+      error: "Erro interno na verificação",
+      verified: false,
+      reason: err?.message || "Erro desconhecido",
+    });
+  }
+});
+
 export default router;

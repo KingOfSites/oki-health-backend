@@ -87,6 +87,10 @@ model Challenge {
   startTime String? // Horário inicial permitido (ex: "09:00")
   endTime   String? // Horário final permitido (ex: "12:00")
 
+  // Visibilidade e frequência
+  isPublic  Boolean @default(true) // Público (true) ou Privado (false)
+  frequency String? @default("daily") // Frequência de registros: "daily", "weekly", "custom"
+
   // Campo adicional (mantido do banco existente)
   status String?
 

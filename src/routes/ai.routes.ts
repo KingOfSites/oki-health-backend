@@ -8,8 +8,9 @@ import * as os from "os";
 const router = Router();
 
 const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY || "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",
+  apiKey: process.env.OPENAI_API_KEY!,
 });
+
 
 // ====================================
 // 🔥 POST /api/ai/nutrition (PROTEGIDO - SÓ PRO)

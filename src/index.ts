@@ -13,6 +13,7 @@ import challengePostsRoutes from "./routes/challengePosts.routes";
 import affiliateRoutes from "./routes/affiliate.routes";
 import settingsRoutes from "./routes/settings.routes";
 import avatarRoutes from "./routes/avatar.routes";
+import reportsRoutes from "./routes/reports.routes";
 
 const app = express();
 
@@ -181,6 +182,7 @@ app.use("/api/subscribe", subscribeRoutes);
 app.use("/api/affiliates", affiliateRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/avatar", avatarRoutes);
+app.use("/api/reports", reportsRoutes);
 
 // Router principal (auth, IA, wallet, challenges, payments, nutrition...)
 app.use("/api", routes);

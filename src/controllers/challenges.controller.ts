@@ -72,6 +72,7 @@ export class ChallengesController {
         endTime,
         isPublic,
         frequency,
+        creatorParticipates,
       } = req.body;
       
       console.log("📥 [Create Challenge] Horários extraídos do body:", {
@@ -238,9 +239,10 @@ export class ChallengesController {
         minWeight: minWeight ? parseFloat(minWeight) : null,
         maxWeight: maxWeight ? parseFloat(maxWeight) : null,
         requiredActivityLevel: requiredActivityLevel || null,
-        isPublic: isPublic !== undefined ? Boolean(isPublic) : true, // Público por padrão
-        frequency: frequency || "daily", // Frequência de registros
+        isPublic: isPublic !== undefined ? Boolean(isPublic) : true,
+        frequency: frequency || "daily",
       };
+      challengePayload.creatorParticipates = creatorParticipates !== false;
       
       // Adicionar horários apenas se foram fornecidos
       if (processedStartTime !== null) {
@@ -418,7 +420,14 @@ static async searchChallenges(req: AuthRequest, res: Response, next: NextFunctio
         });
       }
 
-      // 🟥 Desafio já terminou
+      if ((result as any).challengeStarted) {
+        return res.status(400).json({
+          success: false,
+          challengeStarted: true,
+          message: (result as any).message || "Após o início do desafio não é permitida a entrada de novos participantes.",
+        });
+      }
+
       if ((result as any).challengeEnded) {
         return res.status(410).json({
           success: false,
@@ -520,16 +529,28 @@ static async searchChallenges(req: AuthRequest, res: Response, next: NextFunctio
 
       const challengeId = req.params.id;
 
-      const deleted = await ChallengesService.deleteChallenge(challengeId, req.userId);
+      const result = await ChallengesService.deleteChallenge(challengeId, req.userId);
 
-      if (!deleted) {
+      if (result && typeof result === "object" && "ok" in result && !result.ok) {
+        if ((result as any).reason === "has_participants") {
+          return res.status(400).json({
+            success: false,
+            message: "Não é possível cancelar: já existem participantes no desafio. O cancelamento só é permitido antes da entrada de qualquer participante.",
+          });
+        }
+        return res.status(403).json({
+          success: false,
+          message: "Você não tem permissão para excluir este desafio ou desafio não encontrado.",
+        });
+      }
+      if (!result) {
         return res.status(403).json({
           success: false,
           message: "Você não tem permissão para excluir este desafio",
         });
       }
 
-      return res.json({ success: true, message: "Desafio excluído com sucesso" });
+      return res.json({ success: true, message: "Desafio cancelado com sucesso" });
 
     } catch (error) {
       return next(error);

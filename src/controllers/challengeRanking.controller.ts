@@ -150,79 +150,114 @@ export class ChallengeRankingController {
         });
       }
 
-      // Buscar top 3 participantes
-      const topParticipants = await prisma.$queryRawUnsafe(
-        `SELECT 
-          cp.userId,
-          cp.points,
-          u.name as user_name
+      const allParticipants = await prisma.$queryRawUnsafe(
+        `SELECT cp.userId, cp.points, u.name as user_name
          FROM challenge_participants cp
          JOIN users u ON cp.userId = u.id
          WHERE cp.challengeId = ?
-         ORDER BY cp.points DESC, cp.joinedAt ASC
-         LIMIT 3`,
+         ORDER BY cp.points DESC, cp.joinedAt ASC`,
         challengeId
       ) as any[];
 
-      if (topParticipants.length === 0) {
+      if (allParticipants.length === 0) {
         return res.status(400).json({
           success: false,
           message: "Não há participantes no desafio",
         });
       }
 
-      const prizes = [
+      const prizesCents = [
         challenge.firstPlacePrizeCents || 0,
         challenge.secondPlacePrizeCents || 0,
         challenge.thirdPlacePrizeCents || 0,
       ];
-
       const distributed: any[] = [];
+      const winnerIds = new Set<string>();
 
-      // Distribuir prêmios
-      for (let i = 0; i < topParticipants.length && i < 3; i++) {
-        const participant = topParticipants[i];
-        const prizeCents = prizes[i];
-        
-        if (prizeCents > 0) {
-          const prizeAmount = prizeCents / 100; // Converter centavos para reais
-          
-          // Adicionar ao saldo do usuário
+      let positionIndex = 0;
+      let i = 0;
+      while (i < allParticipants.length && positionIndex < 3) {
+        const currentPoints = allParticipants[i].points ?? 0;
+        const group = allParticipants.filter((p) => (p.points ?? 0) === currentPoints);
+        const prizeCents = prizesCents[positionIndex];
+        if (prizeCents > 0 && group.length > 0) {
+          const shareCents = Math.floor(prizeCents / group.length);
+          const prizeAmount = shareCents / 100;
+          for (const member of group) {
+            await prisma.user.update({
+              where: { id: member.userId },
+              data: {
+                balance: { increment: prizeAmount },
+                total_earned: { increment: prizeAmount },
+              },
+            });
+            await prisma.transaction.create({
+              data: {
+                userId: member.userId,
+                challengeId,
+                type: "challenge_prize",
+                amount: prizeAmount,
+                status: "completed",
+                description: group.length > 1
+                  ? `Prêmio ${positionIndex + 1}º lugar (empatados) - ${challenge.title}`
+                  : `Prêmio ${positionIndex + 1}º lugar - ${challenge.title}`,
+              },
+            });
+            distributed.push({
+              position: positionIndex + 1,
+              userId: member.userId,
+              userName: member.user_name,
+              prizeAmount,
+              tied: group.length > 1,
+            });
+            winnerIds.add(member.userId);
+          }
+        }
+        i += group.length;
+        positionIndex++;
+      }
+
+      const totalPrizeCents = prizesCents[0] + prizesCents[1] + prizesCents[2];
+      const creatorIsParticipant = winnerIds.has(challenge.createdById) || allParticipants.some((p: any) => p.userId === challenge.createdById);
+      if (!creatorIsParticipant && totalPrizeCents > 0) {
+        const creator = await prisma.user.findUnique({
+          where: { id: challenge.createdById },
+          select: { isPro: true },
+        });
+        if (creator?.isPro) {
+          const creatorShareCents = Math.floor(totalPrizeCents * 0.05);
+          const creatorAmount = creatorShareCents / 100;
           await prisma.user.update({
-            where: { id: participant.userId },
+            where: { id: challenge.createdById },
             data: {
-              balance: { increment: prizeAmount },
-              total_earned: { increment: prizeAmount },
+              balance: { increment: creatorAmount },
+              total_earned: { increment: creatorAmount },
             },
           });
-
-          // Criar transação de prêmio
           await prisma.transaction.create({
             data: {
-              userId: participant.userId,
+              userId: challenge.createdById,
               challengeId,
-              type: "challenge_prize",
-              amount: prizeAmount,
+              type: "challenge_creator_fee",
+              amount: creatorAmount,
               status: "completed",
-              description: `Prêmio de ${i + 1}º lugar - ${challenge.title}`,
+              description: `5% criador (observador) - ${challenge.title}`,
             },
           });
-
           distributed.push({
-            position: i + 1,
-            userId: participant.userId,
-            userName: participant.user_name,
-            prizeAmount,
+            position: 0,
+            userId: challenge.createdById,
+            userName: "Criador (PRO)",
+            prizeAmount: creatorAmount,
+            isCreatorFee: true,
           });
         }
       }
 
       return res.json({
         success: true,
-        message: "Prêmios distribuídos com sucesso",
-        data: {
-          distributed,
-        },
+        message: "Prêmios distribuídos com sucesso. Em caso de empate, o prêmio foi dividido igualmente.",
+        data: { distributed },
       });
     } catch (error: any) {
       console.error("[ChallengeRanking] Erro ao distribuir prêmios:", error);

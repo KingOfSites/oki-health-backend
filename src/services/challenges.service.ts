@@ -329,8 +329,20 @@ export class ChallengesService {
     const challenge = await prisma.challenge.create({
       data: prismaData,
     });
+
+    const creatorParticipates = challengeData.creatorParticipates !== false;
+    if (creatorParticipates) {
+      await prisma.challengeParticipant.create({
+        data: {
+          userId: challengeData.createdById,
+          challengeId: challenge.id,
+          progress: 0,
+          points: 0,
+        },
+      });
+    }
     
-    console.log("✅ [ChallengesService] Desafio salvo no banco:", {
+    console.log("✅ [ChallengesService] Desafio salvo no banco (criador como participante:", creatorParticipates, "):", {
       id: challenge.id,
       startTime: challenge.startTime,
       endTime: challenge.endTime,
@@ -340,18 +352,23 @@ export class ChallengesService {
   }
 
   // --------------------------------
-  // DELETAR DESAFIO
+  // DELETAR DESAFIO (cancelar)
+  // Só pode cancelar ANTES de qualquer participante entrar.
   // --------------------------------
   static async deleteChallenge(challengeId: string, userId: string) {
     const challenge = await prisma.challenge.findUnique({
       where: { id: challengeId, createdById: userId },
+      include: { participants: { select: { id: true } } },
     });
 
-    if (!challenge) return false;
+    if (!challenge) return { ok: false, reason: "not_found" as const };
+
+    if (challenge.participants.length > 0) {
+      return { ok: false, reason: "has_participants" as const };
+    }
 
     await prisma.challenge.delete({ where: { id: challenge.id } });
-
-    return true;
+    return { ok: true };
   }
 
   // --------------------------------
@@ -367,7 +384,6 @@ export class ChallengesService {
       throw new Error("Desafio não encontrado");
     }
 
-    // Verificar se o desafio já terminou
     const now = new Date();
     if (now > challenge.endDate) {
       return {
@@ -375,6 +391,15 @@ export class ChallengesService {
         already: false,
         challengeEnded: true,
         message: "Este desafio já foi concluído e não aceita mais participantes.",
+      };
+    }
+
+    if (now >= challenge.startDate) {
+      return {
+        requiresPayment: false,
+        already: false,
+        challengeStarted: true,
+        message: "Após o início do desafio não é permitida a entrada de novos participantes.",
       };
     }
 

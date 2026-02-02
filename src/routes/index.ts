@@ -1,6 +1,7 @@
 import { Router } from "express";
 
 import authRoutes from "./auth.routes";
+import notificationsRoutes from "./notifications.routes";
 import challengesRoutes from "./challenges.routes";
 import walletRoutes from "./wallet.routes";
 // import challengeChatRoutes from "./challengeChat.routes";
@@ -22,6 +23,9 @@ router.use("/ai", aiRoutes);
 
 // 🔥 Autenticação
 router.use("/auth", authRoutes);
+
+// 🔥 Notificações (stub: lista vazia, marcar como lidas)
+router.use("/notifications", notificationsRoutes);
 
 // 🔥 Desafios (CRUD + participar + buscar + chat)
 router.use("/challenges", challengesRoutes);

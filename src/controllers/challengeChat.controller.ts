@@ -193,8 +193,9 @@ export class ChallengeChatController {
                 console.warn(`[Chat] ⚠️ Erro ao buscar created_at da mensagem:`, timeErr);
               }
 
-              // Usar URL do backend configurada no env ou localhost como fallback
-              const baseUrl = env.BACKEND_URL || `http://192.168.1.6:${env.PORT || 3005}`;
+              // Chamada interna: usar sempre localhost para o próprio servidor (evita falha por BACKEND_URL externo)
+              const port = env.PORT || "3005";
+              const baseUrl = `http://127.0.0.1:${port}`;
               const verifyEndpoint = isVideo ? `${baseUrl}/api/ai/verify-weight-video` : `${baseUrl}/api/ai/verify-gym`;
               
               const verifyResponse = await fetch(verifyEndpoint, {

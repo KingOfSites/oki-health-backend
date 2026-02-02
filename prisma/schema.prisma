@@ -275,3 +275,18 @@ model NutritionAnalysis {
   @@index([created_at])
   @@map("nutrition_analyses")
 }
+
+model Report {
+  id         String   @id @default(uuid())
+  reporterId String
+  targetType String   // "message" | "user" | "post"
+  targetId   String
+  reason     String?  @db.Text
+  status     String   @default("pending") // pending, reviewed, dismissed
+  created_at DateTime @default(now())
+
+  @@index([reporterId])
+  @@index([targetType], [targetId])
+  @@index([status])
+  @@map("reports")
+}

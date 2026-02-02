@@ -19,7 +19,9 @@ if (!hasFirebaseConfig) {
 // 🔥 2. Limpar e normalizar chave (se existir)
 // -------------------------------
 const cleanPrivateKey = (env.FIREBASE_PRIVATE_KEY || "")
-  .replace(/\\M/g, "\n")        // corrige erro comum: \M em vez de \n
+  .replace(/\\ /g, " ")          // corrige: \ (barra+espaço) em "PRIVATE KEY" -> espaço
+  .replace(/\\-----/g, "\n-----") // corrige: \----- antes de END -> newline + -----
+  .replace(/\\M/g, "\nM")       // corrige: \M (barra+M) -> quebra de linha + M (preserva base64)
   .replace(/\\n/g, "\n")         // converte \n literal para quebra de linha real
   .replace(/\\\\n/g, "\n")       // trata caso de double escape
   .replace(/\r/g, "")            // remove retornos de carro do Windows

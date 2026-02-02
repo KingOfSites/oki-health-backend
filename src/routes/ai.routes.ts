@@ -1,6 +1,9 @@
 import { Router } from "express";
 import { OpenAI } from "openai";
 import { authenticate } from "../middleware/auth";
+import * as fs from "fs/promises";
+import * as path from "path";
+import * as os from "os";
 
 const router = Router();
 
@@ -756,37 +759,34 @@ router.post("/verify-gym", authenticate, async (req, res) => {
       const messageTimeMinutes = messageHour * 60 + messageMinute;
       
       // Verificar se a mensagem foi enviada durante o período do desafio (datas)
-      // Comparar apenas as datas (sem horário) no timezone do Brasil
+      // Comparar apenas YYYY-MM-DD no timezone do Brasil para evitar problemas de fuso
       const startDate = new Date(challenge.startDate);
       const endDate = new Date(challenge.endDate);
-      
-      // Ajustar endDate para incluir o dia inteiro (até 23:59:59)
-      endDate.setHours(23, 59, 59, 999);
-      
+      const brOpt = { timeZone: "America/Sao_Paulo" as const };
+      const toYYYYMMDD = (d: Date) => {
+        const parts = new Intl.DateTimeFormat("fr-CA", { ...brOpt, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(d);
+        const y = parts.find((p) => p.type === "year")?.value ?? "2024";
+        const m = parts.find((p) => p.type === "month")?.value ?? "01";
+        const day = parts.find((p) => p.type === "day")?.value ?? "01";
+        return `${y}-${m}-${day}`;
+      };
+      const startStr = toYYYYMMDD(startDate);
+      const endStr = toYYYYMMDD(endDate);
+
       // Extrair data da messageDate (formato DD/MM/YYYY)
       const dateParts = messageDate.split("/");
       const day = dateParts[0] || "01";
       const month = dateParts[1] || "01";
       const year = dateParts[2] || "2024";
-      
-      // Comparar apenas a data (sem horário) da mensagem
-      const messageDateOnlyBR = new Date(`${year}-${month}-${day}T00:00:00-03:00`);
-      const startDateOnly = new Date(startDate);
-      startDateOnly.setHours(0, 0, 0, 0);
-      const endDateOnly = new Date(endDate);
-      endDateOnly.setHours(23, 59, 59, 999);
-      
-      console.log("📅 [AI Verify Gym] Período do desafio:", startDate.toLocaleDateString("pt-BR"), "até", endDate.toLocaleDateString("pt-BR"));
-      console.log("📅 [AI Verify Gym] Data da mensagem:", messageDate);
-      console.log("📅 [AI Verify Gym] Comparação de datas:", {
-        messageDateOnlyBR: messageDateOnlyBR.toISOString(),
-        startDateOnly: startDateOnly.toISOString(),
-        endDateOnly: endDateOnly.toISOString()
-      });
-      
-      if (messageDateOnlyBR < startDateOnly || messageDateOnlyBR > endDateOnly) {
+      const messageStr = `${year}-${month}-${day}`;
+
+      console.log("📅 [AI Verify Gym] Período do desafio:", startDate.toLocaleDateString("pt-BR", brOpt), "até", endDate.toLocaleDateString("pt-BR", brOpt));
+      console.log("📅 [AI Verify Gym] Data da mensagem:", messageDate, "→", messageStr);
+      console.log("📅 [AI Verify Gym] Comparação (YYYY-MM-DD):", { messageStr, startStr, endStr });
+
+      if (messageStr < startStr || messageStr > endStr) {
         timeVerification = false;
-        timeVerificationReason = `Mensagem enviada fora do período do desafio (${startDate.toLocaleDateString("pt-BR")} até ${endDate.toLocaleDateString("pt-BR")})`;
+        timeVerificationReason = `Mensagem enviada fora do período do desafio (${startDate.toLocaleDateString("pt-BR", brOpt)} até ${endDate.toLocaleDateString("pt-BR", brOpt)})`;
         console.log("❌ [AI Verify Gym] Mensagem fora do período do desafio");
       } else if (challenge.startTime && challenge.endTime) {
         // PRIORIDADE 1: Usar horários do banco de dados diretamente
@@ -1032,6 +1032,15 @@ router.post("/verify-weight-video", authenticate, async (req, res) => {
       return res.status(400).json({ error: "URL do vídeo não enviada" });
     }
 
+    // Para pesagem é obrigatório vídeo; foto não é aceita
+    const urlLower = (videoUrl as string).toLowerCase().split("?")[0];
+    if (/\.(jpg|jpeg|png|webp|gif|bmp)(\?|$)/i.test(urlLower)) {
+      return res.status(400).json({
+        error: "Para registro de pesagem é obrigatório enviar vídeo",
+        reason: "Fotos não são aceitas. Grave um vídeo mostrando a balança e o peso com clareza, no local cadastrado (casa, academia ou farmácia).",
+      });
+    }
+
     console.log("⚖️ [AI Verify Weight Video] Iniciando verificação de vídeo de pesagem...");
     console.log("⚖️ [AI Verify Weight Video] videoUrl:", videoUrl.substring(0, 50) + "...");
     console.log("⚖️ [AI Verify Weight Video] challengeId:", challengeId);
@@ -1070,56 +1079,82 @@ router.post("/verify-weight-video", authenticate, async (req, res) => {
       });
     }
 
-    // NOTA: A OpenAI Vision API não suporta vídeos diretamente, apenas imagens
-    // Para análise completa de vídeo, seria necessário:
-    // 1. Extrair frames do vídeo usando ffmpeg ou similar
-    // 2. Enviar os frames para análise
-    // 3. Combinar os resultados
-    
-    // Solução temporária: Verificação simplificada baseada em critérios básicos
-    // Em produção, implementar extração de frames com ffmpeg
-    console.log("⚖️ [AI Verify Weight Video] Usando verificação simplificada");
-    console.log("⚠️ [AI Verify Weight Video] Para análise completa, implementar extração de frames com ffmpeg");
-    
-    // Por enquanto, vamos fazer uma verificação básica:
-    // - Verificar se a URL é válida
-    // - Verificar se o usuário tem peso registrado (opcional)
-    // - Aprovar com confiança moderada
-    
-    // Em produção, substituir por extração de frames e análise real
-    // Para implementar análise completa:
-    // 1. Instalar: npm install fluent-ffmpeg @ffmpeg-installer/ffmpeg
-    // 2. Extrair frames do vídeo
-    // 3. Enviar frames para análise da OpenAI Vision API
-    
-    // NOTA IMPORTANTE: A verificação de vídeo requer extração de frames para análise real
-    // Como a OpenAI Vision API não suporta vídeos diretamente, não podemos fazer análise real
-    // Por segurança, vamos REJEITAR por padrão até que seja implementada extração de frames
-    
-    // ⚠️ VERIFICAÇÃO TEMPORÁRIA: Rejeitar todos os vídeos até implementar análise real
-    // Para implementar análise completa:
-    // 1. Instalar: npm install fluent-ffmpeg @ffmpeg-installer/ffmpeg
-    // 2. Extrair frames do vídeo (pelo menos 3-5 frames em momentos diferentes)
-    // 3. Enviar frames para análise da OpenAI Vision API
-    // 4. Combinar resultados dos múltiplos frames
-    
-    console.log("⚖️ [AI Verify Weight Video] Verificação real requer extração de frames - rejeitando por segurança");
-    console.log("⚠️ [AI Verify Weight Video] Para aprovar vídeos, implementar extração de frames com ffmpeg");
-    
-    // Rejeitar por padrão até implementar análise real
-    const verificationResult = {
-      isScale: false, // Não podemos verificar sem análise de frames
-      weightVisible: false, // Não podemos verificar sem análise de frames
+    // Extrair um frame do vídeo e enviar para a Vision API (a IA analisa imagens, não vídeo direto)
+    let json: { verified?: boolean; reason?: string; isScale?: boolean; weightVisible?: boolean; detectedWeight?: number | null; confidence?: number } = {
+      verified: false,
+      reason: "Não foi possível analisar o vídeo.",
+      isScale: false,
+      weightVisible: false,
       detectedWeight: null,
-      confidence: 0.3, // Baixa confiança - não foi analisado
-      reason: "Verificação automática de vídeos não está disponível no momento. É necessário implementar extração de frames do vídeo para análise real. Por favor, use uma foto da balança ou aguarde a implementação da análise de vídeo.",
-      verified: false, // Rejeitar por padrão até análise real
+      confidence: 0,
     };
-    
-    console.log("⚖️ [AI Verify Weight Video] Resultado da verificação (rejeitado por segurança):", verificationResult);
 
-    const json = verificationResult;
-    const finalVerified = false; // Sempre rejeitar até implementar análise real
+    const tempDir = os.tmpdir();
+    const framePath = path.join(tempDir, `frame_${messageId || Date.now()}.jpg`);
+
+    try {
+      const { path: ffmpegPath } = await import("@ffmpeg-installer/ffmpeg");
+      const ffmpegModule = await import("fluent-ffmpeg");
+      const ffmpeg = (ffmpegModule as any).default ?? ffmpegModule;
+      ffmpeg.setFfmpegPath(ffmpegPath);
+
+      await new Promise<void>((resolve, reject) => {
+        ffmpeg(videoUrl)
+          .seekInput(1)
+          .outputOptions(["-vframes 1", "-f image2"])
+          .output(framePath)
+          .on("end", () => resolve())
+          .on("error", (err: Error) => reject(err))
+          .run();
+      });
+
+      const frameBuffer = await fs.readFile(framePath);
+      await fs.unlink(framePath).catch(() => {});
+      const frameBase64 = frameBuffer.toString("base64");
+
+      const prompt = `Você analisa imagens extraídas de vídeos de pesagem para um desafio de saúde.
+Responda APENAS com um JSON válido, sem markdown, no formato:
+{ "verified": true ou false, "reason": "explicação curta", "isScale": true/false, "weightVisible": true/false, "detectedWeight": número ou null, "confidence": 0 a 1 }
+Regras:
+- verified: true somente se aparecer uma BALANÇA (balança de peso) e o PESO visível no mostrador.
+- isScale: true se houver balança visível.
+- weightVisible: true se o número do peso estiver legível.
+- detectedWeight: se conseguir ler o peso em kg, coloque o número; senão null.
+- Rejeite se não houver balança, ou se o peso não estiver visível, ou se parecer foto/vídeo antigo ou de outra pessoa.`;
+
+      const result = await client.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: prompt },
+          {
+            role: "user",
+            content: [
+              { type: "image_url", image_url: { url: `data:image/jpeg;base64,${frameBase64}` } },
+              { type: "text", text: "Esta imagem é um frame de um vídeo de pesagem. A balança e o peso estão visíveis?" },
+            ],
+          },
+        ],
+        max_tokens: 300,
+      });
+
+      const aiText = result.choices[0]?.message?.content;
+      if (aiText) {
+        let clean = aiText.trim().replace(/```json/gi, "").replace(/```/g, "").replace(/`/g, "");
+        const firstBrace = clean.indexOf("{");
+        const lastBrace = clean.lastIndexOf("}");
+        if (firstBrace !== -1 && lastBrace !== -1) {
+          clean = clean.substring(firstBrace, lastBrace + 1);
+          json = JSON.parse(clean);
+        }
+      }
+      console.log("⚖️ [AI Verify Weight Video] Resposta da IA:", json);
+    } catch (extractErr: any) {
+      console.error("❌ [AI Verify Weight Video] Erro ao extrair frame ou analisar:", extractErr);
+      await fs.unlink(framePath).catch(() => {});
+      json.reason = "Não foi possível analisar o vídeo. Certifique-se de que a balança e o peso aparecem com clareza. Se o erro persistir, instale ffmpeg no servidor (npm install @ffmpeg-installer/ffmpeg).";
+    }
+
+    const finalVerified = Boolean(json.verified);
 
     // Atualizar status no banco
     if (messageId) {
@@ -1135,21 +1170,21 @@ router.post("/verify-weight-video", authenticate, async (req, res) => {
           messageId
         );
 
-        // Se verificado, adicionar pontos e atualizar peso do usuário
-        if (finalVerified && json.detectedWeight) {
+        // Se verificado, adicionar pontos; atualizar peso do usuário apenas se detectado
+        if (finalVerified) {
           try {
-            // Atualizar peso do usuário
-            await prisma.user.update({
-              where: { id: userId },
-              data: { peso: json.detectedWeight },
-            });
-
-            // Adicionar pontos ao participante do desafio (10 pontos por pesagem verificada)
+            const weight = json.detectedWeight != null ? Number(json.detectedWeight) : null;
+            if (weight != null && !isNaN(weight) && weight > 0 && weight < 500) {
+              await prisma.user.update({
+                where: { id: userId },
+                data: { peso: weight },
+              });
+            }
             if (challengeId) {
               await prisma.$executeRawUnsafe(
                 `UPDATE challenge_participants 
-                 SET points = points + 10, 
-                     progress = LEAST(progress + 2, 100)
+                 SET points = COALESCE(points, 0) + 10, 
+                     progress = LEAST(COALESCE(progress, 0) + 2, 100)
                  WHERE userId = ? AND challengeId = ?`,
                 userId,
                 challengeId

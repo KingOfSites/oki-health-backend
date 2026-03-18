@@ -8,111 +8,95 @@ datasource db {
 }
 
 model User {
-  id         String  @id @default(uuid())
-  email      String  @unique
-  password   String
-  name       String
-  age        Int
-  city       String
-  avatar_url String?
-  xp         Int     @default(0)
-  level      Int     @default(1)
-
-  balance         Float @default(0)
-  total_earned    Float @default(0)
-  total_withdrawn Float @default(0)
-
-  // Campos adicionais (mantidos do banco existente)
-  altura    Float?
-  peso      Float?
-  sexo      String?
-  atividade String?
-
-  isPro   Boolean @default(false) // Indica se o usuário é PRO
-  isAdmin Boolean @default(false) // Indica se o usuário é administrador
-
-  // Configurações do usuário
-  darkMode      Boolean @default(true)
-  notifications Boolean @default(true)
-
-  affiliateCode String? @unique
-  referredBy    String?
-  referrer      User?   @relation("UserReferrals", fields: [referredBy], references: [id])
-  referrals     User[]  @relation("UserReferrals")
-
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
-
-  challenges         ChallengeParticipant[]
-  createdChallenges  Challenge[]
-  transactions       Transaction[]
+  id                 String                 @id @default(uuid())
+  email              String                 @unique
+  password           String
+  name               String
+  age                Int
+  city               String
+  avatar_url         String?
+  xp                 Int                    @default(0)
+  level              Int                    @default(1)
+  balance            Float                  @default(0)
+  total_earned       Float                  @default(0)
+  total_withdrawn    Float                  @default(0)
+  created_at         DateTime               @default(now())
+  updated_at         DateTime               @updatedAt
+  altura             Float?
+  atividade          String?
+  peso               Float?
+  sexo               String?
+  affiliateCode      String?                @unique
+  referredBy         String?
+  isPro              Boolean                @default(false)
+  darkMode           Boolean                @default(true)
+  notifications      Boolean                @default(true)
+  isAdmin            Boolean                @default(false)
   achievements       Achievement[]
-  planSubscription   PlanSubscription?
-  posts              ChallengePost[]
   chatMessages       ChallengeChat[]
-  referralEarnings   Referral[]             @relation("UserReferralEarnings")
-  withdrawalRequests WithdrawalRequest[]
+  challenges         ChallengeParticipant[]
+  posts              ChallengePost[]
+  createdChallenges  Challenge[]
+  notificationList   Notification[]
   nutritionAnalyses  NutritionAnalysis[]
+  planSubscription   PlanSubscription?
+  referralEarnings   Referral[]             @relation("UserReferralEarnings")
+  transactions       Transaction[]
+  referrer           User?                  @relation("UserReferrals", fields: [referredBy], references: [id])
+  referrals          User[]                 @relation("UserReferrals")
+  weightEntries      WeightEntry[]
+  withdrawalRequests WithdrawalRequest[]
 
+  @@index([referredBy], map: "users_referredBy_fkey")
   @@map("users")
 }
 
 model Challenge {
-  id              String   @id @default(uuid())
-  title           String
-  description     String   @db.Text
-  category        String
-  startDate       DateTime
-  endDate         DateTime
-  reward          Float    @default(0)
-  location        String?
-  createdById     String
-  created_at      DateTime @default(now())
-  coverUrl        String?
-  entryPriceCents Int      @default(0)
-  maxParticipants Int?
+  id                    String                 @id @default(uuid())
+  title                 String
+  description           String                 @db.Text
+  category              String
+  startDate             DateTime
+  endDate               DateTime
+  reward                Float                  @default(0)
+  location              String?
+  coverUrl              String?
+  entryPriceCents       Int                    @default(0)
+  maxParticipants       Int?
+  createdById           String
+  created_at            DateTime               @default(now())
+  status                String?
+  firstPlacePrizeCents  Int                    @default(0)
+  secondPlacePrizeCents Int                    @default(0)
+  thirdPlacePrizeCents  Int                    @default(0)
+  maxWeight             Float?
+  minAge                Int?
+  minWeight             Float?
+  requiredActivityLevel String?
+  startTime             String?
+  endTime               String?
+  isPublic              Boolean?               @default(true)
+  frequency             String?                @default("daily") @db.VarChar(20)
+  chatMessages          ChallengeChat[]
+  participants          ChallengeParticipant[]
+  posts                 ChallengePost[]
+  createdBy             User                   @relation(fields: [createdById], references: [id])
+  notificationRecords   Notification[]
+  transactions          Transaction[]
 
-  // Prêmios para os 3 primeiros lugares (em centavos)
-  firstPlacePrizeCents  Int @default(0)
-  secondPlacePrizeCents Int @default(0)
-  thirdPlacePrizeCents  Int @default(0)
-
-  // Critérios de participação
-  minAge                Int?   // Idade mínima para participar
-  minWeight             Float? // Peso mínimo (em kg)
-  maxWeight             Float? // Peso máximo (em kg)
-  requiredActivityLevel String? // Nível de atividade requerido: "sedentario", "leve", "moderado", "intenso", "muito_intenso"
-
-  // Horários permitidos para treino (formato HH:MM em string, ex: "09:00", "12:00")
-  startTime String? // Horário inicial permitido (ex: "09:00")
-  endTime   String? // Horário final permitido (ex: "12:00")
-
-  // Visibilidade e frequência
-  isPublic  Boolean @default(true) // Público (true) ou Privado (false)
-  frequency String? @default("daily") // Frequência de registros: "daily", "weekly", "custom"
-
-  // Campo adicional (mantido do banco existente)
-  status String?
-
-  participants ChallengeParticipant[]
-  posts        ChallengePost[]
-  createdBy    User                   @relation(fields: [createdById], references: [id])
-  chatMessages ChallengeChat[]
-  transactions Transaction[]
-
+  @@index([createdById], map: "challenges_createdById_fkey")
   @@map("challenges")
 }
 
 model ChallengeParticipant {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   userId      String
   challengeId String
-  progress    Float    @default(0)
-  points      Int      @default(0) // Pontos baseados em verificações de IA
-  joinedAt    DateTime @default(now())
-
-  challenge Challenge @relation(fields: [challengeId], references: [id])
-  user      User      @relation(fields: [userId], references: [id])
+  progress    Float     @default(0)
+  joinedAt    DateTime  @default(now())
+  points      Int       @default(0)
+  challenge   Challenge @relation(fields: [challengeId], references: [id])
+  user        User      @relation(fields: [userId], references: [id])
 
   @@unique([userId, challengeId])
   @@index([challengeId], map: "challenge_participants_challengeId_fkey")
@@ -120,23 +104,20 @@ model ChallengeParticipant {
 }
 
 model Transaction {
-  id         String   @id @default(cuid())
-  created_at DateTime @default(now())
-
-  // relation with User
-  user   User?   @relation(fields: [userId], references: [id])
-  userId String?
-
-  // relation with Challenge
-  challenge   Challenge? @relation(fields: [challengeId], references: [id])
-  challengeId String?
-
+  id          String     @id @default(cuid())
+  userId      String?
   type        String
   amount      Float
+  created_at  DateTime   @default(now())
   description String?
-  mpPaymentId String? @unique
-  status      String  @default("pending")
+  status      String     @default("pending")
+  challengeId String?
+  mpPaymentId String?    @unique
+  challenge   Challenge? @relation(fields: [challengeId], references: [id])
+  user        User?      @relation(fields: [userId], references: [id])
 
+  @@index([challengeId], map: "transactions_challengeId_fkey")
+  @@index([userId], map: "transactions_userId_fkey")
   @@map("transactions")
 }
 
@@ -146,8 +127,7 @@ model Achievement {
   title      String
   points     Int      @default(0)
   achievedAt DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id])
+  user       User     @relation(fields: [userId], references: [id])
 
   @@index([userId], map: "achievements_userId_fkey")
   @@map("achievements")
@@ -171,24 +151,22 @@ model PlanSubscription {
   startDate DateTime  @default(now())
   endDate   DateTime?
   active    Boolean   @default(true)
-
-  plan Plan @relation(fields: [planId], references: [id])
-  user User @relation(fields: [userId], references: [id])
+  plan      Plan      @relation(fields: [planId], references: [id])
+  user      User      @relation(fields: [userId], references: [id])
 
   @@index([planId], map: "plan_subscriptions_planId_fkey")
   @@map("plan_subscriptions")
 }
 
 model ChallengePost {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   challengeId String
   userId      String
   imageUrl    String
   caption     String?
-  created_at  DateTime @default(now())
-
-  challenge Challenge @relation(fields: [challengeId], references: [id])
-  user      User      @relation(fields: [userId], references: [id])
+  created_at  DateTime  @default(now())
+  challenge   Challenge @relation(fields: [challengeId], references: [id])
+  user        User      @relation(fields: [userId], references: [id])
 
   @@index([challengeId], map: "challenge_posts_challengeId_fkey")
   @@index([userId], map: "challenge_posts_userId_fkey")
@@ -196,21 +174,20 @@ model ChallengePost {
 }
 
 model ChallengeChat {
-  id          String   @id @default(uuid())
-  challengeId String
-  userId      String
-  message     String
-  imageUrl    String?
-  created_at  DateTime @default(now())
-
-  // Campos de verificação de IA
-  verificationStatus String?   @default("pending") // pending, verified, rejected
+  id                 String    @id @default(uuid())
+  challengeId        String
+  userId             String
+  message            String
+  created_at         DateTime  @default(now())
+  imageUrl           String?
+  verificationStatus String?   @default("pending")
   verifiedAt         DateTime?
-  verificationReason String?   @db.Text // Motivo da rejeição ou confirmação
+  verificationReason String?   @db.Text
+  challenge          Challenge @relation(fields: [challengeId], references: [id])
+  user               User      @relation(fields: [userId], references: [id])
 
-  challenge Challenge @relation(fields: [challengeId], references: [id])
-  user      User      @relation(fields: [userId], references: [id])
-
+  @@index([challengeId], map: "challenge_chat_challengeId_fkey")
+  @@index([userId], map: "challenge_chat_userId_fkey")
   @@map("challenge_chat")
 }
 
@@ -219,13 +196,12 @@ model Referral {
   referrerId     String
   referredUserId String
   commission     Float     @default(0)
-  commissionRate Float     @default(0.1) // 10% padrão
-  status         String    @default("pending") // pending, paid, cancelled
-  source         String? // "signup", "subscription", etc
+  commissionRate Float     @default(0.1)
+  status         String    @default("pending")
+  source         String?
   created_at     DateTime  @default(now())
   paid_at        DateTime?
-
-  referrer User @relation("UserReferralEarnings", fields: [referrerId], references: [id])
+  referrer       User      @relation("UserReferralEarnings", fields: [referrerId], references: [id])
 
   @@index([referrerId])
   @@index([referredUserId])
@@ -236,25 +212,22 @@ model WithdrawalRequest {
   id             String    @id @default(uuid())
   userId         String
   amount         Float
-  status         String    @default("pending") // pending, approved, rejected, completed
-  withdrawalType String    @default("bank") // "bank" ou "pix"
+  status         String    @default("pending")
   fullName       String
   cpf            String
-  // Dados bancários (quando withdrawalType = "bank")
   bankName       String?
   agency         String?
   account        String?
-  accountType    String? // "checking" ou "savings"
-  // Dados PIX (quando withdrawalType = "pix")
-  pixKeyType     String? // "cpf", "email", "phone", "random"
-  pixKey         String?
-  adminNotes     String?   @db.Text // Notas do admin ao processar
+  accountType    String?
+  adminNotes     String?   @db.Text
   processedAt    DateTime?
-  processedBy    String? // ID do admin que processou
+  processedBy    String?
   created_at     DateTime  @default(now())
   updated_at     DateTime  @updatedAt
-
-  user User @relation(fields: [userId], references: [id])
+  withdrawalType String    @default("bank")
+  pixKeyType     String?
+  pixKey         String?
+  user           User      @relation(fields: [userId], references: [id])
 
   @@index([userId])
   @@index([status])
@@ -262,31 +235,46 @@ model WithdrawalRequest {
 }
 
 model NutritionAnalysis {
-  id         String   @id @default(uuid())
-  userId     String
-  imageUrl   String?  // URL da imagem analisada (opcional)
-  analysis   String   @db.Text // JSON com a análise completa
-  pointsAwarded Int    @default(0) // Pontos concedidos nesta análise
-  created_at DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id])
+  id            String   @id @default(uuid())
+  userId        String
+  imageUrl      String?
+  analysis      String   @db.Text
+  pointsAwarded Int      @default(0)
+  created_at    DateTime @default(now())
+  user          User     @relation(fields: [userId], references: [id])
 
   @@index([userId])
   @@index([created_at])
   @@map("nutrition_analyses")
 }
 
-model Report {
-  id         String   @id @default(uuid())
-  reporterId String
-  targetType String   // "message" | "user" | "post"
-  targetId   String
-  reason     String?  @db.Text
-  status     String   @default("pending") // pending, reviewed, dismissed
-  created_at DateTime @default(now())
+model Notification {
+  id          String     @id
+  userId      String
+  challengeId String?
+  title       String
+  body        String
+  type        String     @default("general")
+  readAt      DateTime?
+  createdAt   DateTime   @default(now())
+  challenge   Challenge? @relation(fields: [challengeId], references: [id])
+  user        User       @relation(fields: [userId], references: [id])
 
-  @@index([reporterId])
-  @@index([targetType], [targetId])
-  @@index([status])
-  @@map("reports")
+  @@index([challengeId])
+  @@index([createdAt])
+  @@index([userId])
+  @@map("notifications")
+}
+
+model WeightEntry {
+  id         String   @id
+  userId     String
+  weightKg   Float
+  note       String?
+  recordedAt DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id])
+
+  @@index([recordedAt])
+  @@index([userId])
+  @@map("weight_entries")
 }

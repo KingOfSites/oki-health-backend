@@ -13,9 +13,18 @@ const client = new OpenAI({
 
 
 // ====================================
-// 🔥 POST /api/ai/nutrition (PROTEGIDO - SÓ PRO)
+// 🔥 POST /api/ai/nutrition — DESABILITADO (Fase 2)
 // ====================================
-router.post("/nutrition", authenticate, async (req, res) => {
+router.post("/nutrition", authenticate, async (_req, res) => {
+  return res.status(503).json({
+    success: false,
+    error: "A análise nutricional por IA está temporariamente indisponível nesta fase da plataforma.",
+    disabled: true,
+  });
+});
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const _nutritionHandler = async (req: any, res: any) => {
   try {
     const userId = (req as any).userId;
     const { imageBase64 } = req.body;
@@ -330,7 +339,7 @@ FORMATO EXATO:
       details: err?.message || String(err)
     });
   }
-});
+};
 
 // ====================================
 // 🔥 POST /api/ai/verify-gym (VERIFICAR ACADEMIA)

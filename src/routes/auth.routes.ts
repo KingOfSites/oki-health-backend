@@ -52,4 +52,18 @@ router.put(
   AuthController.updateProfile
 );
 
+/**
+ * @route   POST /api/auth/forgot-password
+ * @desc    Solicitar recuperação de senha
+ * @access  Public
+ */
+router.post("/forgot-password", AuthController.forgotPassword);
+
+/**
+ * @route   POST /api/auth/reset-password
+ * @desc    Redefinir senha com token
+ * @access  Public
+ */
+router.post("/reset-password", AuthController.resetPassword);
+
 export default router;

@@ -253,7 +253,7 @@ export class ChallengeRankingController {
         }
       }
       const creatorIsParticipant = winnerIds.has(challenge.createdById) || allParticipants.some((p: any) => p.userId === challenge.createdById);
-      if (!creatorIsParticipant && totalPrizeCents > 0) {
+      if (totalPrizeCents > 0) {
         const creator = await prisma.user.findUnique({
           where: { id: challenge.createdById },
           select: { isPro: true },
@@ -275,7 +275,7 @@ export class ChallengeRankingController {
               type: "challenge_creator_fee",
               amount: creatorAmount,
               status: "completed",
-              description: `5% criador (observador) - ${challenge.title}`,
+              description: `5% criador PRO - ${challenge.title}`,
             },
           });
           distributed.push({

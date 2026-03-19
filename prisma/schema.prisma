@@ -26,10 +26,12 @@ model User {
   atividade          String?
   peso               Float?
   sexo               String?
-  nickname           String?                @db.VarChar(50)
-  affiliateCode      String?                @unique
-  referredBy         String?
-  isPro              Boolean                @default(false)
+  nickname                String?                @db.VarChar(50)
+  affiliateCode           String?                @unique
+  referredBy              String?
+  isPro                   Boolean                @default(false)
+  medicationLast6Months   Boolean?               @default(false)
+  surgeryLast6Months      Boolean?               @default(false)
   darkMode           Boolean                @default(true)
   notifications      Boolean                @default(true)
   isAdmin            Boolean                @default(false)
@@ -79,6 +81,10 @@ model Challenge {
   isPublic              Boolean?               @default(true)
   frequency             String?                @default("daily") @db.VarChar(20)
   durationWeeks         Int?
+  mode                  String?                @default("activity") @db.VarChar(20)
+  prizeDistributionType String?                @default("integral") @db.VarChar(20)
+  latitude              Float?
+  longitude             Float?
   chatMessages          ChallengeChat[]
   participants          ChallengeParticipant[]
   posts                 ChallengePost[]
@@ -266,6 +272,19 @@ model Notification {
   @@index([createdAt])
   @@index([userId])
   @@map("notifications")
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([token])
+  @@map("password_reset_tokens")
 }
 
 model WeightEntry {

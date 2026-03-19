@@ -3,7 +3,7 @@ import { Response } from "express";
 
 // Definição de badges (conquistas) – critérios e descrição
 export const BADGES = [
-  { id: "guerreiro", name: "Guerreiro", criteria: "Completou 70% do desafio", icon: "shield" },
+  { id: "guerreiro", name: "Guerreiro", criteria: "Participou do primeiro desafio", icon: "shield" },
   { id: "persistente", name: "Persistente", criteria: "Não desistiu", icon: "flame" },
   { id: "melhoria", name: "Melhoria", criteria: "Perdeu 2kg+", icon: "trending-down" },
   { id: "determinado", name: "Determinado", criteria: "100+ pontos totais", icon: "star" },
@@ -110,7 +110,6 @@ export const GamificationController = {
     ]);
 
     const totalPoints = participants.reduce((s, p) => s + (p.points || 0), 0) + (user?.xp || 0);
-    const has70Percent = participants.some(p => (p.progress || 0) >= 70);
     const hasCompleted = participants.some(p => (p.progress || 0) >= 100);
     const hasParticipated = participants.length >= 1;
     const hasNotQuit = participants.some(p => (p.progress || 0) > 0);
@@ -119,7 +118,7 @@ export const GamificationController = {
 
     const unlocked = new Set<string>();
 
-    if (has70Percent) unlocked.add("guerreiro");
+    if (hasParticipated) unlocked.add("guerreiro");
     if (hasNotQuit && hasParticipated) unlocked.add("persistente");
     if (totalPoints >= 100) unlocked.add("determinado");
     if (totalPoints >= 500) unlocked.add("veterano");

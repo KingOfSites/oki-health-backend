@@ -73,6 +73,10 @@ export class ChallengesController {
         isPublic,
         frequency,
         creatorParticipates,
+        mode,
+        prizeDistributionType,
+        latitude,
+        longitude,
       } = req.body;
       
       console.log("📥 [Create Challenge] Horários extraídos do body:", {
@@ -241,6 +245,10 @@ export class ChallengesController {
         requiredActivityLevel: requiredActivityLevel || null,
         isPublic: isPublic !== undefined ? Boolean(isPublic) : true,
         frequency: frequency || "daily",
+        mode: mode || "activity",
+        prizeDistributionType: prizeDistributionType || "integral",
+        latitude: latitude != null ? parseFloat(latitude) : null,
+        longitude: longitude != null ? parseFloat(longitude) : null,
       };
       challengePayload.creatorParticipates = creatorParticipates !== false;
       
@@ -552,6 +560,36 @@ static async searchChallenges(req: AuthRequest, res: Response, next: NextFunctio
 
       return res.json({ success: true, message: "Desafio cancelado com sucesso" });
 
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  // ================================
+  // ✔️ META DE PERDA DE PESO (Modo Balança)
+  // GET /api/challenges/weight-goal?durationWeeks=12&currentWeight=80
+  // ================================
+  static async getWeightGoal(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const durationWeeks = parseInt(req.query.durationWeeks as string);
+      const currentWeight = parseFloat(req.query.currentWeight as string);
+
+      if (isNaN(durationWeeks) || isNaN(currentWeight) || durationWeeks <= 0 || currentWeight <= 0) {
+        return res.status(400).json({ success: false, message: "durationWeeks e currentWeight são obrigatórios e devem ser positivos" });
+      }
+
+      const result = ChallengesService.calculateWeightGoal(currentWeight, durationWeeks);
+
+      return res.json({
+        success: true,
+        data: {
+          currentWeightKg: currentWeight,
+          durationWeeks,
+          goalWeightKg: result.goalWeightKg,
+          goalPercent: result.goalPercent,
+          weightToLoseKg: parseFloat((currentWeight - result.goalWeightKg).toFixed(1)),
+        },
+      });
     } catch (error) {
       return next(error);
     }

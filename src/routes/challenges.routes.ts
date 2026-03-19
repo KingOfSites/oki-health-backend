@@ -51,6 +51,15 @@ challengeRoutes.get(
 challengeRoutes.get("/search", optionalAuthenticate, ChallengesController.searchChallenges);
 
 /* ============================================================
+🔥 META DE PERDA DE PESO (Modo Balança)
+============================================================ */
+challengeRoutes.get(
+  "/weight-goal",
+  authenticate,
+  ChallengesController.getWeightGoal
+);
+
+/* ============================================================
 🔥 5 — ENTRAR NO DESAFIO
 ============================================================ */
 challengeRoutes.post(

@@ -308,6 +308,10 @@ export class ChallengesService {
       endTime: challengeData.endTime, // Já processado acima
       isPublic: challengeData.isPublic !== undefined ? Boolean(challengeData.isPublic) : true,
       frequency: challengeData.frequency || "daily",
+      mode: challengeData.mode || "activity",
+      prizeDistributionType: challengeData.prizeDistributionType || "integral",
+      latitude: challengeData.latitude || null,
+      longitude: challengeData.longitude || null,
     };
     
     // Garantir explicitamente que startTime e endTime estejam no objeto
@@ -428,8 +432,10 @@ export class ChallengesService {
         age: true,
         peso: true,
         atividade: true,
-      },
-    });
+        medicationLast6Months: true,
+        surgeryLast6Months: true,
+      } as any,
+    }) as any;
 
     if (!user) {
       throw new Error("Usuário não encontrado");
@@ -437,6 +443,20 @@ export class ChallengesService {
 
     // Validar critérios de participação
     const validationErrors: string[] = [];
+
+    // Validação específica para Modo Balança
+    const challengeMode = (challenge as any).mode || "activity";
+    if (challengeMode === "scale") {
+      if (user.medicationLast6Months) {
+        validationErrors.push("Desafios no Modo Balança não permitem participantes que usaram medicamentos para emagrecer nos últimos 6 meses.");
+      }
+      if (user.surgeryLast6Months) {
+        validationErrors.push("Desafios no Modo Balança não permitem participantes que realizaram cirurgia bariátrica nos últimos 6 meses.");
+      }
+      if (!user.peso) {
+        validationErrors.push("Seu peso atual deve estar cadastrado no perfil para participar de desafios no Modo Balança.");
+      }
+    }
 
     // Verificar idade mínima
     if (challenge.minAge !== null && challenge.minAge !== undefined) {
@@ -541,6 +561,25 @@ export class ChallengesService {
       already: false,
       participant,
     };
+  }
+
+  // --------------------------------
+  // META DE PERDA DE PESO (Modo Balança)
+  // --------------------------------
+  static calculateWeightGoal(currentWeightKg: number, durationWeeks: number): { goalWeightKg: number; goalPercent: number } {
+    // 12 semanas = 4%, 24 semanas = 8%
+    // Interpolação linear para outros valores
+    let goalPercent: number;
+    if (durationWeeks <= 12) {
+      goalPercent = 4;
+    } else if (durationWeeks >= 24) {
+      goalPercent = 8;
+    } else {
+      // Interpolação linear entre 12 e 24 semanas
+      goalPercent = 4 + ((durationWeeks - 12) / 12) * 4;
+    }
+    const goalWeightKg = parseFloat((currentWeightKg * (1 - goalPercent / 100)).toFixed(1));
+    return { goalWeightKg, goalPercent };
   }
 
   // --------------------------------

@@ -1,6 +1,24 @@
 import { Request, Response } from "express";
 import prisma from "../config/database";
 import { AuthRequest } from "../middleware/auth";
+import * as fs from "fs";
+import * as path from "path";
+
+// Arquivo de configurações administrativas (persiste em disco)
+const SETTINGS_PATH = path.join(process.cwd(), "admin-settings.json");
+
+function loadSettings() {
+  try {
+    if (fs.existsSync(SETTINGS_PATH)) {
+      return JSON.parse(fs.readFileSync(SETTINGS_PATH, "utf-8"));
+    }
+  } catch {}
+  return { affiliateCommissionRate: 0.15, adminFeeRate: 0.05, proPlanPrice: 29.9 };
+}
+
+function saveSettings(data: object) {
+  fs.writeFileSync(SETTINGS_PATH, JSON.stringify(data, null, 2), "utf-8");
+}
 
 export class AdminController {
   // GET /api/admin/dashboard
@@ -191,6 +209,139 @@ export class AdminController {
         success: false,
         message: "Internal server error",
       });
+    }
+  }
+
+  // GET /api/admin/challenges
+  static async getChallenges(req: Request, res: Response) {
+    try {
+      const userId = (req as AuthRequest).userId;
+      const admin = await prisma.user.findUnique({ where: { id: userId }, select: { isAdmin: true } });
+      if (!admin?.isAdmin) return res.status(403).json({ success: false, message: "Acesso negado." });
+
+      const challenges = await (prisma.challenge as any).findMany({
+        orderBy: { created_at: "desc" },
+        select: {
+          id: true,
+          title: true,
+          category: true,
+          mode: true,
+          prizeDistributionType: true,
+          startDate: true,
+          endDate: true,
+          entryPriceCents: true,
+          firstPlacePrizeCents: true,
+          secondPlacePrizeCents: true,
+          thirdPlacePrizeCents: true,
+          isPublic: true,
+          createdBy: { select: { id: true, name: true, isPro: true } },
+          _count: { select: { participants: true } },
+        },
+      });
+
+      return res.json({ success: true, data: challenges });
+    } catch (err) {
+      console.error("[Admin.getChallenges]", err);
+      return res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  }
+
+  // GET /api/admin/proof-moderation
+  static async getRejectedProofs(req: Request, res: Response) {
+    try {
+      const userId = (req as AuthRequest).userId;
+      const admin = await prisma.user.findUnique({ where: { id: userId }, select: { isAdmin: true } });
+      if (!admin?.isAdmin) return res.status(403).json({ success: false, message: "Acesso negado." });
+
+      const { status = "rejected" } = req.query;
+
+      const proofs = await prisma.$queryRawUnsafe(
+        `SELECT cc.id, cc.challengeId, cc.userId, cc.message, cc.imageUrl, cc.verificationStatus,
+                cc.verificationReason, cc.created_at,
+                u.name as user_name, u.avatar_url,
+                c.title as challenge_title
+         FROM challenge_chat cc
+         JOIN users u ON cc.userId = u.id
+         JOIN challenges c ON cc.challengeId = c.id
+         WHERE cc.imageUrl IS NOT NULL AND cc.verificationStatus = ?
+         ORDER BY cc.created_at DESC
+         LIMIT 100`,
+        status
+      ) as any[];
+
+      return res.json({ success: true, data: proofs });
+    } catch (err) {
+      console.error("[Admin.getRejectedProofs]", err);
+      return res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  }
+
+  // PUT /api/admin/proof-moderation/:id/approve
+  static async approveProofManually(req: Request, res: Response) {
+    try {
+      const userId = (req as AuthRequest).userId;
+      const admin = await prisma.user.findUnique({ where: { id: userId }, select: { isAdmin: true } });
+      if (!admin?.isAdmin) return res.status(403).json({ success: false, message: "Acesso negado." });
+
+      const { id } = req.params;
+
+      await prisma.$executeRawUnsafe(
+        `UPDATE challenge_chat SET verificationStatus = 'verified', verifiedAt = NOW(), verificationReason = 'Aprovado manualmente pelo administrador' WHERE id = ?`,
+        id
+      );
+
+      // Adicionar 1 ponto ao participante se ainda não recebeu hoje
+      const proof = await prisma.$queryRawUnsafe(
+        `SELECT userId, challengeId FROM challenge_chat WHERE id = ?`, id
+      ) as any[];
+
+      if (proof[0]) {
+        const { userId: proofUserId, challengeId } = proof[0];
+        const alreadyPointed = await prisma.$queryRawUnsafe(
+          `SELECT COUNT(*) as cnt FROM challenge_chat WHERE userId = ? AND challengeId = ? AND verificationStatus = 'verified' AND DATE(verifiedAt) = CURDATE() AND id != ?`,
+          proofUserId, challengeId, id
+        ) as any[];
+        if ((alreadyPointed[0]?.cnt ?? 0) === 0) {
+          await prisma.$executeRawUnsafe(
+            `UPDATE challenge_participants SET points = points + 1 WHERE userId = ? AND challengeId = ?`,
+            proofUserId, challengeId
+          );
+        }
+      }
+
+      return res.json({ success: true, message: "Prova aprovada manualmente." });
+    } catch (err) {
+      console.error("[Admin.approveProofManually]", err);
+      return res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  }
+
+  // GET /api/admin/settings
+  static async getSettings(_req: Request, res: Response) {
+    return res.json({ success: true, data: loadSettings() });
+  }
+
+  // PUT /api/admin/settings
+  static async updateSettings(req: Request, res: Response) {
+    try {
+      const userId = (req as AuthRequest).userId;
+      const admin = await prisma.user.findUnique({ where: { id: userId }, select: { isAdmin: true } });
+      if (!admin?.isAdmin) return res.status(403).json({ success: false, message: "Acesso negado." });
+
+      const current = loadSettings();
+      const { affiliateCommissionRate, adminFeeRate, proPlanPrice } = req.body;
+
+      const updated = {
+        affiliateCommissionRate: affiliateCommissionRate != null ? Number(affiliateCommissionRate) : current.affiliateCommissionRate,
+        adminFeeRate: adminFeeRate != null ? Number(adminFeeRate) : current.adminFeeRate,
+        proPlanPrice: proPlanPrice != null ? Number(proPlanPrice) : current.proPlanPrice,
+      };
+
+      saveSettings(updated);
+      return res.json({ success: true, data: updated });
+    } catch (err) {
+      console.error("[Admin.updateSettings]", err);
+      return res.status(500).json({ success: false, message: "Internal server error" });
     }
   }
 }

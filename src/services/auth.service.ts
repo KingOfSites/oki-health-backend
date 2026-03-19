@@ -10,6 +10,7 @@ export interface SignupData {
   email: string;
   password: string;
   name: string;
+  nickname?: string;
   age: number;
   city: string;
   affiliateCode?: string; // Código de afiliado opcional
@@ -80,6 +81,7 @@ export class AuthService {
         email: data.email,
         password: hashedPassword,
         name: data.name,
+        nickname: data.nickname,
         age: data.age,
         city: data.city,
 

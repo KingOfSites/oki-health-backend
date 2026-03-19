@@ -110,6 +110,7 @@ export class AdminController {
         select: {
           id: true,
           name: true,
+          nickname: true,
           email: true,
           balance: true,
           total_earned: true,

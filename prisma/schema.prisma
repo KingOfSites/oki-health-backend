@@ -26,6 +26,7 @@ model User {
   atividade          String?
   peso               Float?
   sexo               String?
+  nickname           String?                @db.VarChar(50)
   affiliateCode      String?                @unique
   referredBy         String?
   isPro              Boolean                @default(false)
@@ -77,6 +78,7 @@ model Challenge {
   endTime               String?
   isPublic              Boolean?               @default(true)
   frequency             String?                @default("daily") @db.VarChar(20)
+  durationWeeks         Int?
   chatMessages          ChallengeChat[]
   participants          ChallengeParticipant[]
   posts                 ChallengePost[]
@@ -196,7 +198,7 @@ model Referral {
   referrerId     String
   referredUserId String
   commission     Float     @default(0)
-  commissionRate Float     @default(0.1)
+  commissionRate Float     @default(0.15)
   status         String    @default("pending")
   source         String?
   created_at     DateTime  @default(now())

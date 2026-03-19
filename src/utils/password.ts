@@ -26,6 +26,14 @@ export class PasswordUtils {
       errors.push("A senha deve conter pelo menos um número");
     }
 
+    if (!/[A-Z]/.test(password)) {
+      errors.push("A senha deve conter pelo menos uma letra maiúscula");
+    }
+
+    if (!/[^a-zA-Z0-9]/.test(password)) {
+      errors.push("A senha deve conter pelo menos um símbolo especial");
+    }
+
     return {
       valid: errors.length === 0,
       errors,

@@ -12,6 +12,7 @@ import subscribeRoutes from "./routes/subscribe.routes";
 import challengePostsRoutes from "./routes/challengePosts.routes";
 import affiliateRoutes from "./routes/affiliate.routes";
 import settingsRoutes from "./routes/settings.routes";
+import { startNotificationEngine } from "./jobs/notificationEngine";
 import avatarRoutes from "./routes/avatar.routes";
 import reportsRoutes from "./routes/reports.routes";
 
@@ -292,6 +293,9 @@ const startServer = async () => {
 
     await Promise.race([connectPromise, timeoutPromise]);
     console.log("✅ Database connected");
+
+    // Inicializa o agendador de notificações nativo
+    startNotificationEngine();
 
     // Descobrir IPs da máquina
     const networkIPs = getNetworkIPs();

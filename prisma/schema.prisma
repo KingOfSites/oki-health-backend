@@ -10,10 +10,11 @@ datasource db {
 model User {
   id                 String                 @id @default(uuid())
   email              String                 @unique
-  password           String
+  password           String?
   name               String
-  age                Int
-  city               String
+  age                Int?
+  city               String?
+  googleId           String?                @unique
   avatar_url         String?
   xp                 Int                    @default(0)
   level              Int                    @default(1)

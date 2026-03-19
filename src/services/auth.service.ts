@@ -2,6 +2,7 @@ import prisma from "../config/database";
 import { PasswordUtils } from "../utils/password";
 import { JWTUtils } from "../utils/jwt";
 import { AppError } from "../middleware/errorHandler";
+import { env } from "../config/env";
 
 // ----------------------------------------------------
 // DTOs
@@ -156,6 +157,10 @@ export class AuthService {
       throw new AppError(401, "Email ou senha incorretos");
     }
 
+    if (!user.password) {
+      throw new AppError(401, "Esta conta usa login social. Faça login com Google.");
+    }
+
     const isPasswordValid = await PasswordUtils.compare(
       data.password,
       user.password
@@ -186,6 +191,99 @@ export class AuthService {
         avatar_url: user.avatar_url ?? null,
         isAdmin: user.isAdmin ?? false,
 
+        created_at: user.created_at,
+        updated_at: user.updated_at,
+      },
+    };
+  }
+
+  // ----------------------------------------------------
+  // GOOGLE OAUTH CALLBACK
+  // ----------------------------------------------------
+  static async googleCallback(code: string, redirectUri: string): Promise<AuthResponse & { isNew: boolean }> {
+    if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) {
+      throw new AppError(500, "Google OAuth não configurado no servidor");
+    }
+
+    // 1. Trocar código por access_token
+    const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        code,
+        client_id: env.GOOGLE_CLIENT_ID,
+        client_secret: env.GOOGLE_CLIENT_SECRET,
+        redirect_uri: redirectUri,
+        grant_type: "authorization_code",
+      }),
+    });
+
+    const tokenData = await tokenRes.json() as any;
+    if (!tokenRes.ok) {
+      throw new AppError(400, tokenData.error_description || "Falha ao trocar código com o Google");
+    }
+
+    // 2. Buscar dados do usuário no Google
+    const userInfoRes = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+      headers: { Authorization: `Bearer ${tokenData.access_token}` },
+    });
+
+    const googleUser = await userInfoRes.json() as any;
+    if (!userInfoRes.ok) {
+      throw new AppError(400, "Falha ao buscar dados do Google");
+    }
+
+    // 3. Buscar ou criar usuário
+    let isNew = false;
+    let user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { googleId: googleUser.id },
+          { email: googleUser.email },
+        ],
+      },
+    });
+
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          googleId: googleUser.id,
+          email: googleUser.email,
+          name: googleUser.name || googleUser.email.split("@")[0],
+          avatar_url: googleUser.picture ?? null,
+          password: null,
+          isPro: false,
+        },
+      });
+      isNew = true;
+    } else if (!user.googleId) {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          googleId: googleUser.id,
+          avatar_url: user.avatar_url ?? googleUser.picture ?? null,
+        },
+      });
+    }
+
+    const token = JWTUtils.generate(user.id);
+
+    return {
+      isNew,
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        age: user.age as number,
+        city: user.city as string,
+        sexo: (user.sexo === "M" || user.sexo === "F") ? user.sexo : null,
+        peso: user.peso ?? null,
+        altura: user.altura ?? null,
+        atividade: user.atividade ?? null,
+        xp: user.xp,
+        level: user.level,
+        avatar_url: user.avatar_url ?? null,
         created_at: user.created_at,
         updated_at: user.updated_at,
       },

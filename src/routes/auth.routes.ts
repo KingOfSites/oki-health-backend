@@ -17,6 +17,8 @@ const router = Router();
  * @desc    Register a new user (com novos campos nutricionais)
  * @access  Public
  */
+router.post("/google/callback", AuthController.googleCallback);
+
 router.post("/signup", validate(signupSchema), AuthController.signup);
 
 /**

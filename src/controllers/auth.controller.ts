@@ -75,6 +75,29 @@ export class AuthController {
     }
   }
 
+  static async googleCallback(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { code, redirectUri } = req.body;
+
+      if (!code || !redirectUri) {
+        return res.status(400).json({
+          success: false,
+          message: "code e redirectUri são obrigatórios",
+        });
+      }
+
+      const result = await AuthService.googleCallback(code, redirectUri);
+
+      return res.status(200).json({
+        success: true,
+        message: "Login com Google realizado com sucesso",
+        data: result,
+      });
+    } catch (error) {
+      return next(error);
+    }
+  }
+
   static async getProfile(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       if (!req.userId) {

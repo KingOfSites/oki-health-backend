@@ -636,7 +636,7 @@ export class WalletController {
   static async startDepositPayment(req: AuthRequest, res: Response) {
     try {
       const userId = req.userId;
-      const { type, payer, card, amount, googlePayToken, paymentMethodId } = req.body;
+      const { type, payer, card, amount, googlePayToken, applePayToken, paymentMethodId } = req.body;
 
       // Log detalhado dos dados recebidos (para debug)
       console.log("💳 [Wallet Payment] ========== DADOS RECEBIDOS ==========");
@@ -710,6 +710,77 @@ export class WalletController {
           success: false,
           message: "Valor mínimo de depósito é R$ 1,00",
         });
+      }
+
+      // ======================================================
+      // 🍎 APPLE PAY
+      // ======================================================
+      if (type === "apple_pay") {
+        if (!applePayToken) {
+          return res.status(400).json({ success: false, message: "Token do Apple Pay não fornecido" });
+        }
+
+        const payerEmail = payer?.email ? String(payer.email).trim() : "";
+        if (!payerEmail) {
+          return res.status(400).json({ success: false, message: "Email obrigatório para pagamento via Apple Pay" });
+        }
+
+        console.log("📤 [Apple Pay] Processando pagamento:", { amount, email: payerEmail });
+
+        try {
+          const tokenData = typeof applePayToken === "string" ? JSON.parse(applePayToken) : applePayToken;
+          const mpToken = tokenData?.paymentData ?? tokenData;
+
+          const payment = await new Payment(mp).create({
+            body: {
+              transaction_amount: amount,
+              token: typeof mpToken === "string" ? mpToken : JSON.stringify(mpToken),
+              payment_method_id: "apple_pay",
+              installments: 1,
+              description: `Depósito na carteira - R$ ${amount.toFixed(2)}`,
+              payer: { email: payerEmail },
+            } as any,
+          });
+
+          console.log("✅ [Apple Pay] Resposta MP:", { id: payment.id, status: payment.status });
+
+          const isApproved = payment.status === "approved";
+          const isPending = payment.status === "pending";
+
+          await prisma.transaction.create({
+            data: {
+              userId,
+              amount,
+              mpPaymentId: String(payment.id),
+              status: isApproved ? "completed" : isPending ? "pending" : "rejected",
+              type: "deposit",
+              description: `Depósito Apple Pay de R$ ${amount.toFixed(2)}`,
+            },
+          });
+
+          if (isApproved) {
+            await prisma.user.update({
+              where: { id: userId },
+              data: { balance: { increment: amount }, total_earned: { increment: amount } },
+            });
+          }
+
+          return res.json({
+            success: isApproved || isPending,
+            data: {
+              paymentId: payment.id,
+              paymentStatus: payment.status,
+              message: isApproved ? "Pagamento aprovado!" : isPending ? "Em processamento" : "Pagamento rejeitado",
+            },
+          });
+        } catch (err: any) {
+          const mpCause = err?.cause?.[0];
+          console.error("❌ [Apple Pay] Erro:", mpCause?.description ?? err?.message);
+          return res.status(500).json({
+            success: false,
+            message: mpCause?.description ?? "Erro ao processar pagamento via Apple Pay",
+          });
+        }
       }
 
       // ======================================================

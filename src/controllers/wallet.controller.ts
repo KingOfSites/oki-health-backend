@@ -636,7 +636,7 @@ export class WalletController {
   static async startDepositPayment(req: AuthRequest, res: Response) {
     try {
       const userId = req.userId;
-      const { type, payer, card, amount } = req.body;
+      const { type, payer, card, amount, googlePayToken, paymentMethodId } = req.body;
 
       // Log detalhado dos dados recebidos (para debug)
       console.log("💳 [Wallet Payment] ========== DADOS RECEBIDOS ==========");
@@ -710,6 +710,109 @@ export class WalletController {
           success: false,
           message: "Valor mínimo de depósito é R$ 1,00",
         });
+      }
+
+      // ======================================================
+      // 🟢 GOOGLE PAY
+      // ======================================================
+      if (type === "google_pay") {
+        if (!googlePayToken) {
+          return res.status(400).json({
+            success: false,
+            message: "Token do Google Pay não fornecido",
+          });
+        }
+
+        const payerEmail = payer?.email ? String(payer.email).trim() : "";
+        if (!payerEmail) {
+          return res.status(400).json({
+            success: false,
+            message: "Email obrigatório para pagamento via Google Pay",
+          });
+        }
+
+        console.log("📤 [Google Pay] Processando pagamento:", { amount, email: payerEmail });
+
+        try {
+          // payment_method_id: usa o informado pelo frontend (brand do cartão) ou "google_pay"
+          const gpPaymentMethodId = paymentMethodId || "google_pay";
+          console.log("📤 [Google Pay] payment_method_id:", gpPaymentMethodId);
+
+          const payment = await new Payment(mp).create({
+            body: {
+              transaction_amount: amount,
+              token: googlePayToken,
+              payment_method_id: gpPaymentMethodId,
+              installments: 1,
+              description: `Depósito na carteira - R$ ${amount.toFixed(2)}`,
+              payer: {
+                email: payerEmail,
+              },
+            } as any,
+          });
+
+          console.log("✅ [Google Pay] Resposta do Mercado Pago:", { id: payment.id, status: payment.status });
+
+          const isApproved = payment.status === "approved";
+          const isPending = payment.status === "pending";
+
+          await prisma.transaction.create({
+            data: {
+              userId,
+              amount,
+              mpPaymentId: String(payment.id),
+              status: isApproved ? "completed" : isPending ? "pending" : "rejected",
+              type: "deposit",
+              description: `Depósito Google Pay de R$ ${amount.toFixed(2)}`,
+            },
+          });
+
+          if (isApproved) {
+            await prisma.user.update({
+              where: { id: userId },
+              data: {
+                balance: { increment: amount },
+                total_earned: { increment: amount },
+              },
+            });
+          }
+
+          return res.json({
+            success: isApproved || isPending,
+            data: {
+              paymentId: payment.id,
+              paymentStatus: payment.status,
+              message: isApproved
+                ? "Pagamento aprovado com sucesso!"
+                : isPending
+                ? "Pagamento em processamento"
+                : "Pagamento rejeitado",
+            },
+          });
+        } catch (err: any) {
+          // Log detalhado para debug
+          const mpCause = err?.cause?.[0];
+          const mpStatus = err?.status ?? err?.response?.status;
+          const mpDescription = mpCause?.description ?? err?.message ?? "Erro desconhecido";
+          const mpCode = mpCause?.code ?? "N/A";
+
+          console.error("❌ [Google Pay] Erro ao processar pagamento:");
+          console.error("   Status MP:", mpStatus);
+          console.error("   Código MP:", mpCode);
+          console.error("   Descrição:", mpDescription);
+          console.error("   Erro completo:", JSON.stringify(err?.cause ?? err?.message));
+
+          const userMessage =
+            mpStatus === 400 || mpStatus === 422
+              ? mpDescription
+              : "Erro ao processar pagamento via Google Pay. Tente novamente.";
+
+          return res.status(mpStatus && mpStatus < 500 ? mpStatus : 500).json({
+            success: false,
+            message: userMessage,
+            errorCode: mpCode,
+          });
+        }
       }
 
       // Normalizar CPF (apenas números)
@@ -1453,8 +1556,22 @@ export class WalletController {
         });
       }
 
+      // Tratamento para erros de política (403) - método de pagamento não habilitado na conta
+      const errStatus = err?.status ?? err?.response?.status;
+      if (errStatus === 403 || err?.code === "PA_UNAUTHORIZED_RESULT_FROM_POLICIES") {
+        console.error("⚠️ [Mercado Pago] Método de pagamento bloqueado por política (403)");
+        console.error("   code:", err?.code);
+        console.error("   blocked_by:", err?.blocked_by);
+        console.error("   Solução: habilite o método de pagamento no painel do Mercado Pago");
+        return res.status(400).json({
+          success: false,
+          message: "Este método de pagamento não está disponível. Verifique as configurações da sua conta no Mercado Pago ou use outro método.",
+          errorCode: err?.code || "MP_POLICY_BLOCKED",
+        });
+      }
+
       // Tratamento para outros erros do Mercado Pago
-      if (err?.status === 400 || err?.response?.status === 400) {
+      if (errStatus === 400) {
         const mpError = err?.cause?.[0] || err?.response?.data;
         return res.status(400).json({
           success: false,

@@ -1056,18 +1056,23 @@ export class WalletController {
           cpfPrefix: cpfClean.substring(0, 3),
         });
 
+        const pixExpiration = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+        const backendUrl = process.env.BACKEND_URL || "https://okibackend.solidtech.digital/api";
+
         const payment = await new Payment(mp).create({
           body: {
             transaction_amount: amount,
             payment_method_id: "pix",
             description: `Depósito na carteira - R$ ${amount.toFixed(2)}`,
+            date_of_expiration: pixExpiration,
+            notification_url: `${backendUrl}/wallet/webhook`,
             payer: {
               first_name: firstName,
               last_name: lastName,
               email,
               identification: {
                 type: "CPF",
-                number: cpfClean, // Garantir que está limpo
+                number: cpfClean,
               },
             },
           },
@@ -1298,19 +1303,28 @@ export class WalletController {
             }
           });
 
-          // Preparar payload completo para o Mercado Pago
-          // NOTA: 
-          // - currency_id não é aceito pela API - a moeda é definida automaticamente pelo Access Token
-          // - payment_method_id não é necessário quando usamos token - o MP detecta automaticamente
+          // Detectar bandeira do cartão pelo BIN (primeiros dígitos)
+          const detectCardBrand = (num: string): string => {
+            if (/^4/.test(num)) return "visa";
+            if (/^(34|37)/.test(num)) return "amex";
+            if (/^(5[1-5]|2(2[2-9]|[3-6]\d|7[01]|720))/.test(num)) return "master";
+            if (/^606282/.test(num)) return "hipercard";
+            if (/^(4011|4312|4389|4514|4576|5041|5066|5090|6277|6362|6363|6504|6505|6506|6507|6509|6516|6550)/.test(num)) return "elo";
+            return "visa"; // fallback
+          };
+          const paymentMethodId = detectCardBrand(cardNumber);
+          const backendUrl = process.env.BACKEND_URL || "https://okibackend.solidtech.digital/api";
+
           const paymentBody: any = {
             transaction_amount: amount,
             token: token.id,
             description: `Depósito na carteira - R$ ${amount.toFixed(2)}`,
             installments: 1,
+            payment_method_id: paymentMethodId,
+            notification_url: `${backendUrl}/wallet/webhook`,
             payer: payerData,
-            // Campos adicionais recomendados
             statement_descriptor: "DEPOSITO",
-            capture: true, // Capturar o pagamento imediatamente
+            capture: true,
           };
 
           // Log do payload completo (sem mostrar dados sensíveis)
@@ -1361,7 +1375,25 @@ export class WalletController {
           console.error("❌ [Wallet Payment] Error Details:", paymentError.errorDetails);
           
           let userMessage = "Erro ao processar pagamento. Verifique os dados e tente novamente.";
-          
+
+          // Erro de política: conta não habilitada para este método de pagamento
+          if (
+            errorMessage.includes("UNAUTHORIZED") ||
+            errorMessage.includes("policy") ||
+            paymentError.code === "PA_UNAUTHORIZED_RESULT_FROM_POLICIES" ||
+            paymentError.status === 403 ||
+            paymentError.response?.status === 403
+          ) {
+            console.error("⚠️ [Wallet Payment] Conta Mercado Pago não habilitada para cartão de crédito em produção");
+            console.error("   Solução: verifique as permissões da conta em https://www.mercadopago.com.br/developers/panel/app");
+            return res.status(400).json({
+              success: false,
+              message: "Pagamento com cartão não está disponível no momento. A conta precisa ser habilitada para transações com cartão no Mercado Pago.",
+              errorCode: "MP_POLICY_UNAUTHORIZED",
+              error: paymentError.message,
+            });
+          }
+
           // Erro específico: diff_param_bins (código 10103) - dados do cartão não correspondem aos dados do pagador
           if (errorMessage.includes("diff_param_bins") || errorCode === 10103 || errorCode === "10103") {
             userMessage = "Os dados do cartão não correspondem aos dados do pagador. Verifique se o nome e CPF informados correspondem exatamente ao titular do cartão e tente novamente.";

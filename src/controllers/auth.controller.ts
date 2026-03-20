@@ -75,6 +75,26 @@ export class AuthController {
     }
   }
 
+  // POST /api/auth/google — Mobile (idToken)
+  static async googleSignIn(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { idToken } = req.body;
+      if (!idToken) {
+        return res.status(400).json({ success: false, message: "idToken é obrigatório" });
+      }
+
+      const result = await AuthService.googleSignIn(idToken);
+
+      return res.status(200).json({
+        success: true,
+        message: "Login com Google realizado com sucesso",
+        data: result,
+      });
+    } catch (error) {
+      return next(error);
+    }
+  }
+
   static async googleCallback(req: Request, res: Response, next: NextFunction) {
     try {
       const { code, redirectUri } = req.body;

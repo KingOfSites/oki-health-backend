@@ -198,6 +198,67 @@ export class AuthService {
   }
 
   // ----------------------------------------------------
+  // GOOGLE SIGN-IN (Mobile — idToken)
+  // ----------------------------------------------------
+  static async googleSignIn(idToken: string): Promise<AuthResponse & { isNew: boolean }> {
+    // Valida o idToken diretamente no Google
+    const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${idToken}`);
+    if (!res.ok) {
+      throw new AppError(401, "Token do Google inválido");
+    }
+
+    const payload = await res.json() as any;
+    const googleId: string = payload.sub;
+    const email: string = payload.email;
+    const name: string = payload.name || email.split("@")[0];
+    const picture: string | null = payload.picture ?? null;
+
+    if (!googleId || !email) {
+      throw new AppError(401, "Dados insuficientes no token do Google");
+    }
+
+    let isNew = false;
+    let user = await prisma.user.findFirst({
+      where: { OR: [{ googleId }, { email }] },
+    });
+
+    if (!user) {
+      user = await prisma.user.create({
+        data: { googleId, email, name, avatar_url: picture, password: null, isPro: false },
+      });
+      isNew = true;
+    } else if (!user.googleId) {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: { googleId, avatar_url: user.avatar_url ?? picture },
+      });
+    }
+
+    const token = JWTUtils.generate(user.id);
+
+    return {
+      isNew,
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        age: user.age as number,
+        city: user.city as string,
+        sexo: (user.sexo === "M" || user.sexo === "F") ? user.sexo : null,
+        peso: user.peso ?? null,
+        altura: user.altura ?? null,
+        atividade: user.atividade ?? null,
+        xp: user.xp,
+        level: user.level,
+        avatar_url: user.avatar_url ?? null,
+        created_at: user.created_at,
+        updated_at: user.updated_at,
+      },
+    };
+  }
+
+  // ----------------------------------------------------
   // GOOGLE OAUTH CALLBACK
   // ----------------------------------------------------
   static async googleCallback(code: string, redirectUri: string): Promise<AuthResponse & { isNew: boolean }> {

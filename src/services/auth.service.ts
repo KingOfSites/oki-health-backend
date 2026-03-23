@@ -3,6 +3,8 @@ import { PasswordUtils } from "../utils/password";
 import { JWTUtils } from "../utils/jwt";
 import { AppError } from "../middleware/errorHandler";
 import { env } from "../config/env";
+import jwt from "jsonwebtoken";
+import jwkToPem from "jwk-to-pem";
 
 // ----------------------------------------------------
 // DTOs
@@ -324,6 +326,99 @@ export class AuthService {
           googleId: googleUser.id,
           avatar_url: user.avatar_url ?? googleUser.picture ?? null,
         },
+      });
+    }
+
+    const token = JWTUtils.generate(user.id);
+
+    return {
+      isNew,
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        age: user.age as number,
+        city: user.city as string,
+        sexo: (user.sexo === "M" || user.sexo === "F") ? user.sexo : null,
+        peso: user.peso ?? null,
+        altura: user.altura ?? null,
+        atividade: user.atividade ?? null,
+        xp: user.xp,
+        level: user.level,
+        avatar_url: user.avatar_url ?? null,
+        created_at: user.created_at,
+        updated_at: user.updated_at,
+      },
+    };
+  }
+
+  // ----------------------------------------------------
+  // APPLE SIGN-IN (Mobile — identityToken JWT)
+  // ----------------------------------------------------
+  static async appleSignIn(
+    identityToken: string,
+    userInfo?: { email?: string | null; fullName?: { givenName?: string | null; familyName?: string | null } | null }
+  ): Promise<AuthResponse & { isNew: boolean }> {
+    // 1. Decodificar o header do JWT para obter o kid
+    const decoded = jwt.decode(identityToken, { complete: true });
+    if (!decoded || typeof decoded.payload === "string") {
+      throw new AppError(401, "Token da Apple inválido");
+    }
+
+    const kid = decoded.header.kid;
+
+    // 2. Buscar chaves públicas da Apple
+    const keysRes = await fetch("https://appleid.apple.com/auth/keys");
+    if (!keysRes.ok) {
+      throw new AppError(502, "Falha ao buscar chaves públicas da Apple");
+    }
+    const { keys } = await keysRes.json() as { keys: any[] };
+    const matchingKey = keys.find((k: any) => k.kid === kid);
+    if (!matchingKey) {
+      throw new AppError(401, "Chave pública da Apple não encontrada para este token");
+    }
+
+    // 3. Verificar assinatura do token
+    const pem = jwkToPem(matchingKey);
+    let payload: any;
+    try {
+      payload = jwt.verify(identityToken, pem, { algorithms: ["RS256"] });
+    } catch {
+      throw new AppError(401, "Token da Apple inválido ou expirado");
+    }
+
+    const appleId: string = payload.sub;
+    // Apple só envia email no primeiro login; nas subsequentes pode vir nulo
+    const email: string | null = payload.email ?? userInfo?.email ?? null;
+    const givenName = userInfo?.fullName?.givenName;
+    const familyName = userInfo?.fullName?.familyName;
+    const name = givenName
+      ? [givenName, familyName].filter(Boolean).join(" ")
+      : email?.split("@")[0] ?? "Usuário Apple";
+
+    if (!appleId) {
+      throw new AppError(401, "Dados insuficientes no token da Apple");
+    }
+
+    // 4. Buscar ou criar usuário
+    let isNew = false;
+    let user = await prisma.user.findFirst({
+      where: { OR: [{ appleId }, ...(email ? [{ email }] : [])] },
+    });
+
+    if (!user) {
+      if (!email) {
+        throw new AppError(400, "Email não disponível. Faça login novamente e autorize o compartilhamento de email.");
+      }
+      user = await prisma.user.create({
+        data: { appleId, email, name, password: null, isPro: false },
+      });
+      isNew = true;
+    } else if (!user.appleId) {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: { appleId },
       });
     }
 

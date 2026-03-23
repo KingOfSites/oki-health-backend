@@ -15,6 +15,7 @@ model User {
   age                Int?
   city               String?
   googleId           String?                @unique
+  appleId            String?                @unique
   avatar_url         String?
   xp                 Int                    @default(0)
   level              Int                    @default(1)

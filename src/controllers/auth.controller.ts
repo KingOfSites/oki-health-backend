@@ -95,6 +95,26 @@ export class AuthController {
     }
   }
 
+  // POST /api/auth/apple — Mobile (identityToken)
+  static async appleSignIn(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { identityToken, user: userInfo } = req.body;
+      if (!identityToken) {
+        return res.status(400).json({ success: false, message: "identityToken é obrigatório" });
+      }
+
+      const result = await AuthService.appleSignIn(identityToken, userInfo);
+
+      return res.status(200).json({
+        success: true,
+        message: "Login com Apple realizado com sucesso",
+        data: result,
+      });
+    } catch (error) {
+      return next(error);
+    }
+  }
+
   static async googleCallback(req: Request, res: Response, next: NextFunction) {
     try {
       const { code, redirectUri } = req.body;

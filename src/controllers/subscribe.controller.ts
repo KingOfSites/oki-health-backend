@@ -293,6 +293,214 @@ export class SubscribeController {
     }
   }
 
+  // ------------------------------ GOOGLE PAY ------------------------------
+  static async subscribeWithGooglePay(req: Request, res: Response) {
+    try {
+      const userId = (req as any).userId;
+      const { planType, cpf, email, googlePayToken, description } = req.body;
+
+      if (!userId) {
+        return res.status(401).json({ success: false, message: "Usuário não autenticado." });
+      }
+
+      if (!googlePayToken || !planType || !cpf || !email) {
+        return res.status(400).json({ success: false, message: "Dados incompletos para pagamento." });
+      }
+
+      const planName = planType === "annual" ? "Premium Anual" : "Premium Mensal";
+      const plan = await prisma.plan.findFirst({ where: { name: planName } });
+
+      if (!plan) {
+        return res.status(404).json({ success: false, message: "Plano não encontrado." });
+      }
+
+      const cpfDigits = String(cpf).replace(/\D/g, "");
+      
+      const tokenData = typeof googlePayToken === "string" ? JSON.parse(googlePayToken) : googlePayToken;
+      let mpToken = "";
+      if (typeof tokenData === "string") {
+        mpToken = tokenData;
+      } else if (tokenData.id) {
+        mpToken = tokenData.id;
+      } else if (tokenData.signature) {
+        mpToken = tokenData.signature;
+      } else if (tokenData.paymentMethodData?.tokenizationData?.token) {
+        try {
+          const innerToken = JSON.parse(tokenData.paymentMethodData.tokenizationData.token);
+          mpToken = innerToken.id || innerToken;
+        } catch (e) {
+          mpToken = tokenData.paymentMethodData.tokenizationData.token;
+        }
+      } else {
+        mpToken = JSON.stringify(tokenData);
+      }
+
+      const payment = new Payment(mpClient);
+      let mpResponse: any;
+
+      try {
+        mpResponse = await payment.create({
+          body: {
+            token: mpToken,
+            transaction_amount: plan.price,
+            payment_method_id: "google_pay",
+            installments: 1,
+            description: description || `Assinatura ${planName} via Google Pay`,
+            payer: {
+              email,
+              identification: { type: "CPF", number: cpfDigits },
+            },
+          } as any,
+        });
+      } catch (paymentError: any) {
+        console.error("❌ Erro ao criar pagamento MP (Google Pay):", paymentError);
+        return res.status(400).json({
+          success: false,
+          message: "Erro ao processar pagamento com Google Pay. Tente usar um cartão.",
+          details: paymentError.cause || paymentError.message,
+        });
+      }
+
+      if (!["approved", "pending", "in_process"].includes(mpResponse.status)) {
+        return res.status(400).json({ success: false, message: "Falha no pagamento (Google Pay).", error: mpResponse });
+      }
+
+      await prisma.planSubscription.updateMany({ where: { userId }, data: { active: false } });
+
+      const now = new Date();
+      const endDate = new Date(now);
+      if (planType === "annual") endDate.setFullYear(endDate.getFullYear() + 1);
+      else endDate.setMonth(endDate.getMonth() + 1);
+
+      const subscription = await prisma.planSubscription.upsert({
+        where: { userId },
+        update: { planId: plan.id, active: true, startDate: new Date(), endDate },
+        create: { userId, planId: plan.id, active: true, startDate: new Date(), endDate },
+      });
+
+      if (mpResponse.status === "approved") {
+        await prisma.user.update({ where: { id: userId }, data: { isPro: true } as any });
+      }
+
+      await prisma.transaction.create({
+        data: {
+          userId,
+          amount: plan.price,
+          type: "subscription",
+          description: description || `Assinatura ${planName} via Google Pay`,
+          mpPaymentId: String(mpResponse.id || ""),
+          status: mpResponse.status || "pending",
+        },
+      });
+
+      return res.json({
+        success: true,
+        message: "Assinatura via Google Pay iniciada com sucesso!",
+        subscription,
+        payment: { id: mpResponse.id, status: mpResponse.status },
+      });
+    } catch (error: any) {
+      console.error("❌ ERRO GOOGLE PAY:", error);
+      return res.status(500).json({ success: false, message: error.message || "Erro." });
+    }
+  }
+
+  // ------------------------------ APPLE PAY ------------------------------
+  static async subscribeWithApplePay(req: Request, res: Response) {
+    try {
+      const userId = (req as any).userId;
+      const { planType, cpf, email, applePayToken, description } = req.body;
+
+      if (!userId) {
+        return res.status(401).json({ success: false, message: "Usuário não autenticado." });
+      }
+
+      if (!applePayToken || !planType || !cpf || !email) {
+        return res.status(400).json({ success: false, message: "Dados incompletos para pagamento." });
+      }
+
+      const planName = planType === "annual" ? "Premium Anual" : "Premium Mensal";
+      const plan = await prisma.plan.findFirst({ where: { name: planName } });
+
+      if (!plan) {
+        return res.status(404).json({ success: false, message: "Plano não encontrado." });
+      }
+
+      const cpfDigits = String(cpf).replace(/\D/g, "");
+      
+      const tokenData = typeof applePayToken === "string" ? JSON.parse(applePayToken) : applePayToken;
+      const mpToken = tokenData?.paymentData ?? tokenData;
+
+      const payment = new Payment(mpClient);
+      let mpResponse: any;
+
+      try {
+        mpResponse = await payment.create({
+          body: {
+            token: typeof mpToken === "string" ? mpToken : JSON.stringify(mpToken),
+            transaction_amount: plan.price,
+            payment_method_id: "apple_pay",
+            installments: 1,
+            description: description || `Assinatura ${planName} via Apple Pay`,
+            payer: {
+              email,
+              identification: { type: "CPF", number: cpfDigits },
+            },
+          } as any,
+        });
+      } catch (paymentError: any) {
+        console.error("❌ Erro ao criar pagamento MP (Apple Pay):", paymentError);
+        return res.status(400).json({
+          success: false,
+          message: "Erro ao processar pagamento com Apple Pay. Tente usar um cartão.",
+          details: paymentError.cause || paymentError.message,
+        });
+      }
+
+      if (!["approved", "pending", "in_process"].includes(mpResponse.status)) {
+        return res.status(400).json({ success: false, message: "Falha no pagamento (Apple Pay).", error: mpResponse });
+      }
+
+      await prisma.planSubscription.updateMany({ where: { userId }, data: { active: false } });
+
+      const now = new Date();
+      const endDate = new Date(now);
+      if (planType === "annual") endDate.setFullYear(endDate.getFullYear() + 1);
+      else endDate.setMonth(endDate.getMonth() + 1);
+
+      const subscription = await prisma.planSubscription.upsert({
+        where: { userId },
+        update: { planId: plan.id, active: true, startDate: new Date(), endDate },
+        create: { userId, planId: plan.id, active: true, startDate: new Date(), endDate },
+      });
+
+      if (mpResponse.status === "approved") {
+        await prisma.user.update({ where: { id: userId }, data: { isPro: true } as any });
+      }
+
+      await prisma.transaction.create({
+        data: {
+          userId,
+          amount: plan.price,
+          type: "subscription",
+          description: description || `Assinatura ${planName} via Apple Pay`,
+          mpPaymentId: String(mpResponse.id || ""),
+          status: mpResponse.status || "pending",
+        },
+      });
+
+      return res.json({
+        success: true,
+        message: "Assinatura via Apple Pay iniciada com sucesso!",
+        subscription,
+        payment: { id: mpResponse.id, status: mpResponse.status },
+      });
+    } catch (error: any) {
+      console.error("❌ ERRO APPLE PAY:", error);
+      return res.status(500).json({ success: false, message: error.message || "Erro." });
+    }
+  }
+
   // ------------------------------ PIX ------------------------------
   static async subscribeWithPix(req: Request, res: Response) {
     try {

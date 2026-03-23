@@ -7,6 +7,8 @@ const router = Router();
 // 🔥 ROTAS PROTEGIDAS — agora com authenticate!
 router.post("/card", authenticate, SubscribeController.subscribeWithCard);
 router.post("/pix", authenticate, SubscribeController.subscribeWithPix);
+router.post("/google-pay", authenticate, SubscribeController.subscribeWithGooglePay);
+router.post("/apple-pay", authenticate, SubscribeController.subscribeWithApplePay);
 
 // 🔥 VERIFICAR STATUS DO PAGAMENTO PIX
 router.get("/pix/:paymentId", authenticate, SubscribeController.checkPixPayment);

@@ -15,6 +15,16 @@ router.post("/card", authenticate, SubscribeController.subscribeWithCard);
 router.post("/pix", authenticate, SubscribeController.subscribeWithPix);
 
 // ------------------------------------------------------
+// 🟢 GOOGLE PAY
+// ------------------------------------------------------
+router.post("/google-pay", authenticate, SubscribeController.subscribeWithGooglePay);
+
+// ------------------------------------------------------
+// 🍎 APPLE PAY
+// ------------------------------------------------------
+router.post("/apple-pay", authenticate, SubscribeController.subscribeWithApplePay);
+
+// ------------------------------------------------------
 // ⭐ STATUS PREMIUM DO USUÁRIO
 // (para o app saber se ele é premium ou não)
 // ------------------------------------------------------

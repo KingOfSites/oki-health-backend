@@ -115,6 +115,28 @@ export class AuthController {
     }
   }
 
+  // POST /api/auth/facebook — Mobile (accessToken)
+  static async facebookSignIn(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { accessToken } = req.body;
+      const tokenToUse = accessToken || req.body.token; // fallback
+      
+      if (!tokenToUse) {
+        return res.status(400).json({ success: false, message: "token (ou accessToken) é obrigatório" });
+      }
+
+      const result = await AuthService.facebookSignIn(tokenToUse);
+
+      return res.status(200).json({
+        success: true,
+        message: "Login com Facebook realizado com sucesso",
+        data: result,
+      });
+    } catch (error) {
+      return next(error);
+    }
+  }
+
   static async googleCallback(req: Request, res: Response, next: NextFunction) {
     try {
       const { code, redirectUri } = req.body;

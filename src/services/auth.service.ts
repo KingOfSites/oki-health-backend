@@ -447,6 +447,73 @@ export class AuthService {
   }
 
   // ----------------------------------------------------
+  // FACEBOOK SIGN-IN (Mobile — accessToken)
+  // ----------------------------------------------------
+  static async facebookSignIn(token: string): Promise<AuthResponse & { isNew: boolean }> {
+    // Busca dados do usuário no Graph API do Facebook
+    const res = await fetch(`https://graph.facebook.com/me?fields=id,name,email,picture.type(large)&access_token=${token}`);
+    
+    if (!res.ok) {
+      throw new AppError(401, "Token do Facebook inválido");
+    }
+
+    const payload = await res.json() as any;
+    
+    // Facebook Graph API não retorna email garantidamente, depende das permissões e se o usuário tem email configurado
+    const facebookId: string = payload.id;
+    const name: string = payload.name;
+    const email: string | null = payload.email ?? null;
+    const picture: string | null = payload.picture?.data?.url ?? null;
+
+    if (!facebookId) {
+      throw new AppError(401, "Dados insuficientes no token do Facebook");
+    }
+
+    let isNew = false;
+    let user = await prisma.user.findFirst({
+      where: { OR: [{ facebookId }, ...(email ? [{ email }] : [])] },
+    });
+
+    if (!user) {
+      if (!email) {
+        throw new AppError(400, "Email não disponível. Faça login novamente e autorize o compartilhamento de email.");
+      }
+      user = await prisma.user.create({
+        data: { facebookId, email, name, avatar_url: picture, password: null, isPro: false },
+      });
+      isNew = true;
+    } else if (!user.facebookId) {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: { facebookId, avatar_url: user.avatar_url ?? picture },
+      });
+    }
+
+    const jwtToken = JWTUtils.generate(user.id);
+
+    return {
+      isNew,
+      token: jwtToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        age: user.age as number,
+        city: user.city as string,
+        sexo: (user.sexo === "M" || user.sexo === "F") ? user.sexo : null,
+        peso: user.peso ?? null,
+        altura: user.altura ?? null,
+        atividade: user.atividade ?? null,
+        xp: user.xp,
+        level: user.level,
+        avatar_url: user.avatar_url ?? null,
+        created_at: user.created_at,
+        updated_at: user.updated_at,
+      },
+    };
+  }
+
+  // ----------------------------------------------------
   // GET PROFILE ✅ (ADICIONADO)
   // ----------------------------------------------------
   static async getProfile(userId: string) {

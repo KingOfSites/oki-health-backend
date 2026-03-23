@@ -16,6 +16,7 @@ model User {
   city               String?
   googleId           String?                @unique
   appleId            String?                @unique
+  facebookId         String?                @unique
   avatar_url         String?
   xp                 Int                    @default(0)
   level              Int                    @default(1)

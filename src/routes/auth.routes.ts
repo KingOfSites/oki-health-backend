@@ -20,6 +20,7 @@ const router = Router();
 router.post("/google", AuthController.googleSignIn);
 router.post("/google/callback", AuthController.googleCallback);
 router.post("/apple", AuthController.appleSignIn);
+router.post("/facebook", AuthController.facebookSignIn);
 
 router.post("/signup", validate(signupSchema), AuthController.signup);
 

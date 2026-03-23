@@ -306,6 +306,7 @@ static async searchChallenges(req: AuthRequest, res: Response, next: NextFunctio
             coverUrl: true,
             entryPriceCents: true,
             created_at: true,
+            isPublic: true,
             participants: {
               select: {
                 userId: true,
@@ -333,6 +334,7 @@ static async searchChallenges(req: AuthRequest, res: Response, next: NextFunctio
               entry_price_cents: c.entryPriceCents,
               participants_count: c.participants.length,
               is_participant: userId ? c.participants.some((p) => p.userId === userId) : false,
+              is_private: c.isPublic === false,
             })),
           },
         });
@@ -364,6 +366,7 @@ static async searchChallenges(req: AuthRequest, res: Response, next: NextFunctio
           coverUrl: true,
           entryPriceCents: true,
           created_at: true,
+          isPublic: true,
           participants: {
             select: {
               userId: true,
@@ -391,6 +394,7 @@ static async searchChallenges(req: AuthRequest, res: Response, next: NextFunctio
             entry_price_cents: c.entryPriceCents,
             participants_count: c.participants.length,
             is_participant: userId ? c.participants.some((p) => p.userId === userId) : false,
+            is_private: c.isPublic === false,
           })),
         },
       });

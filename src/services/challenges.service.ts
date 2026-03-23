@@ -20,6 +20,7 @@ export class ChallengesService {
             coverUrl: true,
             entryPriceCents: true,
             createdById: true,
+            isPublic: true,
           },
         },
       },
@@ -60,6 +61,7 @@ export class ChallengesService {
         entry_price_cents: r.challenge.entryPriceCents,
         is_creator: r.challenge.createdById === userId,
         is_participant: true,
+        is_private: r.challenge.isPublic === false,
       };
     });
   }
@@ -79,6 +81,7 @@ export class ChallengesService {
         endDate: true,
         coverUrl: true,
         entryPriceCents: true,
+        isPublic: true,
         participants: {
           select: {
             id: true,
@@ -118,6 +121,7 @@ export class ChallengesService {
         entry_price_cents: c.entryPriceCents,
         is_creator: true,
         is_participant: true,
+        is_private: c.isPublic === false,
       };
     });
   }
@@ -142,6 +146,7 @@ export class ChallengesService {
         createdById: true,
         startTime: true,
         endTime: true,
+        isPublic: true,
         participants: {
           select: {
             userId: true,
@@ -187,6 +192,7 @@ export class ChallengesService {
         is_creator,
         is_participant: isParticipant,
         createdBy: challenge.createdBy,
+        is_private: challenge.isPublic === false,
       },
       posts: [],
       ranking: [],
@@ -213,6 +219,7 @@ export class ChallengesService {
         coverUrl: true,
         entryPriceCents: true,
         created_at: true,
+        isPublic: true,
         participants: {
           select: {
             userId: true,
@@ -244,6 +251,7 @@ export class ChallengesService {
         created_at: c.created_at,
         participants_count: c.participants?.length || 0,
         is_participant: userId ? (c.participants?.some(p => p.userId === userId) || false) : false,
+        is_private: c.isPublic === false,
       };
     });
   }

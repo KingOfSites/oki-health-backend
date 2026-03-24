@@ -1017,6 +1017,18 @@ router.post("/verify-gym", authenticate, async (req, res) => {
 
   } catch (err: any) {
     console.error("❌ [AI Verify Gym] Erro:", err);
+    
+    // EXIBE MENSAGEM DE ERRO NA TELA PARA O USUÁRIO (O FRONT LÊ O REASON DO BANCO)
+    if (req.body && req.body.messageId) {
+      try {
+        const prisma = (await import("../config/database")).default;
+        await prisma.$executeRawUnsafe(
+          `UPDATE challenge_chat SET verificationStatus = 'rejected', verificationReason = '🚨 Erro na verificação: O serviço de inteligência artificial falhou ou está mal configurado. Tente novamente mais tarde.' WHERE id = ?`,
+          req.body.messageId
+        );
+      } catch (dbErr) {}
+    }
+
     return res.status(500).json({
       error: "Erro interno na verificação",
       verified: false,
@@ -1025,6 +1037,7 @@ router.post("/verify-gym", authenticate, async (req, res) => {
     });
   }
 });
+
 
 // ====================================
 // 🔥 POST /api/ai/verify-weight-video (VERIFICAR VÍDEO DE PESAGEM)
@@ -1221,6 +1234,18 @@ Regras:
 
   } catch (err: any) {
     console.error("❌ [AI Verify Weight Video] Erro:", err);
+    
+    // EXIBE MENSAGEM DE ERRO NA TELA PARA O USUÁRIO
+    if (req.body && req.body.messageId) {
+      try {
+        const prisma = (await import("../config/database")).default;
+        await prisma.$executeRawUnsafe(
+          `UPDATE challenge_chat SET verificationStatus = 'rejected', verificationReason = '🚨 Erro na verificação: O serviço de inteligência artificial encontrou uma falha no vídeo. Verifique se o formato está correto ou se há problema no servidor.' WHERE id = ?`,
+          req.body.messageId
+        );
+      } catch (dbErr) {}
+    }
+
     return res.status(500).json({
       error: "Erro interno na verificação",
       verified: false,

@@ -223,6 +223,12 @@ export class ChallengeChatController {
             } catch (verifyErr) {
               console.error(`[Chat] ❌ Erro ao chamar verificação de IA:`, verifyErr);
               // Não falhar a requisição principal se a verificação falhar
+              try {
+                await prisma.$executeRawUnsafe(
+                  `UPDATE challenge_chat SET verificationStatus = 'rejected', verificationReason = '🚨 Falha de comunicação interna no servidor: A imagem não conseguiu chegar na inteligência artificial.' WHERE id = ?`,
+                  messageId
+                );
+              } catch (dbErr) {}
             }
           });
         } catch (err: any) {

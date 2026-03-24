@@ -862,7 +862,7 @@ export class SubscribeController {
 
       return res.json({
         success: true,
-        premium: isPremium,
+        premium: isPremium || Boolean(subscription),
         plan: subscription?.plan?.name ?? null,
         expiresAt: subscription?.endDate ?? null,
       });

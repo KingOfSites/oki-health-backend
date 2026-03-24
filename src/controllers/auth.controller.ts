@@ -2,7 +2,6 @@ import { Request, Response, NextFunction } from "express";
 import { AuthService } from "../services/auth.service";
 import { AuthRequest } from "../middleware/auth";
 import prisma from "../config/database";
-import crypto from "crypto";
 import { PasswordUtils } from "../utils/password";
 
 export class AuthController {
@@ -213,11 +212,11 @@ export class AuthController {
         return res.status(400).json({ success: false, message: "Email é obrigatório" });
       }
 
-      const user = await prisma.user.findUnique({ where: { email }, select: { id: true, email: true } });
+      const user = await prisma.user.findUnique({ where: { email }, select: { id: true, email: true, name: true } });
 
       // Sempre retornar sucesso para não vazar se o e-mail existe
       if (!user) {
-        return res.json({ success: true, message: "Se o e-mail estiver cadastrado, você receberá as instruções de recuperação." });
+        return res.json({ success: true, message: "Se o e-mail estiver cadastrado, você receberá um código de recuperação." });
       }
 
       // Expirar tokens anteriores do usuário
@@ -226,20 +225,23 @@ export class AuthController {
         data: { used: true },
       });
 
-      const token = crypto.randomBytes(32).toString("hex");
-      const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hora
+      // Gerar código de 6 dígitos
+      const token = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutos
 
       await (prisma as any).passwordResetToken.create({
         data: { userId: user.id, token, expiresAt },
       });
 
-      // TODO: enviar e-mail com link contendo o token
-      // Por enquanto retorna o token na resposta (apenas em dev)
+      // Importar o provedor de e-mail e enviar
+      const { MailService } = await import("../services/mail.service");
+      await MailService.sendPasswordResetEmail(user.email, token, user.name || "Usuário");
+
       const isDev = process.env.NODE_ENV !== "production";
 
       return res.json({
         success: true,
-        message: "Se o e-mail estiver cadastrado, você receberá as instruções de recuperação.",
+        message: "Se o e-mail estiver cadastrado, você receberá um código de recuperação.",
         ...(isDev && { resetToken: token }),
       });
     } catch (err) {

@@ -80,20 +80,69 @@ export class ChallengeChatController {
       }
 
       // 🔥 Formato que o front espera
-      const formatted = messages.map((msg) => ({
-        id: msg.id,
-        userId: msg.userId,
-        user_name: msg.user_name ?? "Usuário",
-        avatar_url: msg.avatar_url ?? null,
-        message: msg.message,
-        imageUrl: msg.imageUrl ?? null,
-        created_at: msg.created_at,
-        // Só definir verificationStatus se houver imagem/vídeo
-        // Mensagens de texto puro não precisam de verificação
-        verificationStatus: msg.imageUrl ? (msg.verificationStatus ?? "pending") : null,
-        verifiedAt: msg.verifiedAt ?? null,
-        verificationReason: msg.verificationReason ?? null,
-      }));
+      const formatted = messages.map((msg) => {
+        const isPending = msg.imageUrl && (!msg.verificationStatus || msg.verificationStatus === "pending");
+
+        // Force retry background job for any pending messages
+        if (isPending) {
+          setImmediate(async () => {
+            try {
+              console.log(`[Chat] 🔄 Re-agendando análise de IA pendente para a mensagem ${msg.id}...`);
+              const isVideo = msg.imageUrl.includes('.mp4') || msg.imageUrl.includes('.mov') || msg.imageUrl.includes('video');
+              const env = (await import("../config/env")).default;
+              const token = req.headers.authorization?.replace("Bearer ", "");
+              
+              if (!token) return;
+
+              let messageTimeFormatted;
+              try {
+                const messageCreatedAt = new Date(msg.created_at);
+                messageTimeFormatted = messageCreatedAt.toLocaleTimeString("pt-BR", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  timeZone: "America/Sao_Paulo"
+                });
+              } catch (e) {}
+
+              const port = env.PORT || "3005";
+              const baseUrl = `http://127.0.0.1:${port}`;
+              const verifyEndpoint = isVideo ? `${baseUrl}/api/ai/verify-weight-video` : `${baseUrl}/api/ai/verify-gym`;
+              
+              await fetch(verifyEndpoint, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Authorization": `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                  imageUrl: msg.imageUrl,
+                  videoUrl: isVideo ? msg.imageUrl : undefined,
+                  challengeId: req.params.challengeId,
+                  messageId: msg.id,
+                  ...(messageTimeFormatted && { messageTime: messageTimeFormatted }),
+                }),
+              });
+            } catch (retryErr) {
+              console.error(`[Chat] ❌ Falha no retry automático de IA da mensagem ${msg.id}:`, retryErr);
+            }
+          });
+        }
+
+        return {
+          id: msg.id,
+          userId: msg.userId,
+          user_name: msg.user_name ?? "Usuário",
+          avatar_url: msg.avatar_url ?? null,
+          message: msg.message,
+          imageUrl: msg.imageUrl ?? null,
+          created_at: msg.created_at,
+          // Só definir verificationStatus se houver imagem/vídeo
+          // Mensagens de texto puro não precisam de verificação
+          verificationStatus: msg.imageUrl ? (msg.verificationStatus ?? "pending") : null,
+          verifiedAt: msg.verifiedAt ?? null,
+          verificationReason: msg.verificationReason ?? null,
+        };
+      });
 
       return res.json({ data: formatted });
 
@@ -219,16 +268,17 @@ export class ChallengeChatController {
               } else {
                 const errorText = await verifyResponse.text();
                 console.error(`[Chat] ❌ Erro na verificação de IA:`, errorText);
+                
+                // MANTIDO COMO PENDENTE: 
+                // Se a API da IA falhou com status de erro (ex: falha de config, sem saldo, etc),
+                // não vamos mais rejeitar a imagem, apenas deixamos pending.
+                // O auto-retry no getMessages cuidará de tentar novamente mais tarde.
+                console.log(`[Chat] ⚠️ Mensagem ${messageId} mantida como pending para auto-retry futuro devido a erro na IA.`);
               }
             } catch (verifyErr) {
-              console.error(`[Chat] ❌ Erro ao chamar verificação de IA:`, verifyErr);
-              // Não falhar a requisição principal se a verificação falhar
-              try {
-                await prisma.$executeRawUnsafe(
-                  `UPDATE challenge_chat SET verificationStatus = 'rejected', verificationReason = '🚨 Falha de comunicação interna no servidor: A imagem não conseguiu chegar na inteligência artificial.' WHERE id = ?`,
-                  messageId
-                );
-              } catch (dbErr) {}
+              console.error(`[Chat] ❌ Erro catastrófico ao chamar verificação de IA (rede/código):`, verifyErr);
+              // Não falhar a requisição principal se a verificação falhar, apenas mantenha pendente
+              console.log(`[Chat] ⚠️ Mensagem ${messageId} mantida como pending para auto-retry futuro.`);
             }
           });
         } catch (err: any) {

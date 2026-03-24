@@ -28,6 +28,9 @@ export class ChallengeRankingController {
           secondPlacePrizeCents: true,
           thirdPlacePrizeCents: true,
           endDate: true,
+          endTime: true,
+          status: true,
+          createdById: true,
         },
       });
 
@@ -80,7 +83,14 @@ export class ChallengeRankingController {
 
       // Verificar se o desafio já terminou
       const now = new Date();
-      const isFinished = challenge.endDate < now;
+      const end = new Date(challenge.endDate);
+      if (challenge.endTime && /^\d{2}:\d{2}$/.test(challenge.endTime)) {
+        const [h, m] = challenge.endTime.split(':');
+        end.setHours(Number(h), Number(m), 59, 999);
+      } else {
+        end.setHours(23, 59, 59, 999);
+      }
+      const isFinished = challenge.status === "completed" || end < now;
 
       return res.json({
         success: true,
@@ -92,6 +102,8 @@ export class ChallengeRankingController {
             secondPlacePrizeCents: challenge.secondPlacePrizeCents || 0,
             thirdPlacePrizeCents: challenge.thirdPlacePrizeCents || 0,
             isFinished,
+            status: challenge.status,
+            createdById: challenge.createdById,
           },
           ranking,
         },
@@ -143,10 +155,26 @@ export class ChallengeRankingController {
 
       // Verificar se o desafio já terminou
       const now = new Date();
-      if (challenge.endDate > now) {
+      const end = new Date(challenge.endDate);
+      if (challenge.endTime && /^\d{2}:\d{2}$/.test(challenge.endTime)) {
+        const [h, m] = challenge.endTime.split(':');
+        end.setHours(Number(h), Number(m), 59, 999);
+      } else {
+        end.setHours(23, 59, 59, 999);
+      }
+
+      if (end > now && challenge.status !== "completed") {
         return res.status(400).json({
           success: false,
           message: "O desafio ainda não terminou",
+        });
+      }
+
+      // Verificar se já foi finalizado
+      if (challenge.status === "completed") {
+        return res.status(400).json({
+          success: false,
+          message: "Os prêmios deste desafio já foram distribuídos",
         });
       }
 
@@ -287,6 +315,12 @@ export class ChallengeRankingController {
           });
         }
       }
+
+      // Atualizar o status do desafio para completed para não distribuir de novo
+      await (prisma.challenge as any).update({
+        where: { id: challengeId },
+        data: { status: "completed" }
+      });
 
       return res.json({
         success: true,

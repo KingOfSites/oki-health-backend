@@ -1,5 +1,30 @@
 import prisma from "../config/database";
 
+function computeChallengeStatus(c: { startDate: Date, endDate: Date, startTime?: string | null, endTime?: string | null, status?: string | null }): "upcoming" | "active" | "completed" {
+  if (c.status === "completed") return "completed";
+  const now = new Date();
+  
+  const start = new Date(c.startDate);
+  if (c.startTime && /^\d{2}:\d{2}$/.test(c.startTime)) {
+    const [h, m] = c.startTime.split(':');
+    start.setHours(Number(h), Number(m), 0, 0);
+  } else {
+    start.setHours(0, 0, 0, 0);
+  }
+  
+  const end = new Date(c.endDate);
+  if (c.endTime && /^\d{2}:\d{2}$/.test(c.endTime)) {
+    const [h, m] = c.endTime.split(':');
+    end.setHours(Number(h), Number(m), 59, 999);
+  } else {
+    end.setHours(23, 59, 59, 999);
+  }
+
+  if (now < start) return "upcoming";
+  if (now > end) return "completed";
+  return "active";
+}
+
 export class ChallengesService {
 
   // ================================
@@ -17,6 +42,9 @@ export class ChallengesService {
             category: true,
             startDate: true,
             endDate: true,
+            startTime: true,
+            endTime: true,
+            status: true,
             coverUrl: true,
             entryPriceCents: true,
             createdById: true,
@@ -40,12 +68,7 @@ export class ChallengesService {
     );
 
     return rows.map(r => {
-      // Calcular status baseado nas datas
-      const now = new Date();
-      let computed_status: "upcoming" | "active" | "completed";
-      if (now < r.challenge.startDate) computed_status = "upcoming";
-      else if (now > r.challenge.endDate) computed_status = "completed";
-      else computed_status = "active";
+      const computed_status = computeChallengeStatus(r.challenge);
 
       return {
         id: r.challenge.id,
@@ -55,6 +78,8 @@ export class ChallengesService {
         status: computed_status,
         start_date: r.challenge.startDate,
         end_date: r.challenge.endDate,
+        start_time: r.challenge.startTime,
+        end_time: r.challenge.endTime,
         participants_count: countMap.get(r.challenge.id) || 0,
         progress: r.progress,
         cover_url: r.challenge.coverUrl || null,
@@ -79,6 +104,9 @@ export class ChallengesService {
         category: true,
         startDate: true,
         endDate: true,
+        startTime: true,
+        endTime: true,
+        status: true,
         coverUrl: true,
         entryPriceCents: true,
         isPublic: true,
@@ -101,12 +129,7 @@ export class ChallengesService {
     );
 
     return rows.map(c => {
-      // Calcular status baseado nas datas
-      const now = new Date();
-      let computed_status: "upcoming" | "active" | "completed";
-      if (now < c.startDate) computed_status = "upcoming";
-      else if (now > c.endDate) computed_status = "completed";
-      else computed_status = "active";
+      const computed_status = computeChallengeStatus(c);
 
       return {
         id: c.id,
@@ -116,6 +139,8 @@ export class ChallengesService {
         status: computed_status,
         start_date: c.startDate,
         end_date: c.endDate,
+        start_time: c.startTime,
+        end_time: c.endTime,
         participants_count: countMap.get(c.id) || c.participants.length || 0,
         cover_url: c.coverUrl,
         entry_price_cents: c.entryPriceCents,
@@ -146,6 +171,7 @@ export class ChallengesService {
         createdById: true,
         startTime: true,
         endTime: true,
+        status: true,
         isPublic: true,
         participants: {
           select: {
@@ -162,12 +188,7 @@ export class ChallengesService {
 
     if (!challenge) return null;
 
-    // Calcular status baseado nas datas
-    const now = new Date();
-    let computed_status: "upcoming" | "active" | "completed";
-    if (now < challenge.startDate) computed_status = "upcoming";
-    else if (now > challenge.endDate) computed_status = "completed";
-    else computed_status = "active";
+    const computed_status = computeChallengeStatus(challenge);
 
     const isParticipant = challenge.participants.some(p => p.userId === userId);
     const participants_count = challenge.participants.length;
@@ -214,6 +235,9 @@ export class ChallengesService {
         category: true,
         startDate: true,
         endDate: true,
+        startTime: true,
+        endTime: true,
+        status: true,
         reward: true,
         location: true,
         coverUrl: true,
@@ -229,12 +253,7 @@ export class ChallengesService {
     });
 
     return challenges.map(c => {
-      // Calcular status baseado nas datas
-      const now = new Date();
-      let computed_status: "upcoming" | "active" | "completed";
-      if (now < c.startDate) computed_status = "upcoming";
-      else if (now > c.endDate) computed_status = "completed";
-      else computed_status = "active";
+      const computed_status = computeChallengeStatus(c);
 
       return {
         id: c.id,
@@ -243,6 +262,8 @@ export class ChallengesService {
         category: c.category,
         start_date: c.startDate,
         end_date: c.endDate,
+        start_time: c.startTime,
+        end_time: c.endTime,
         reward: c.reward,
         location: c.location,
         cover_url: c.coverUrl,

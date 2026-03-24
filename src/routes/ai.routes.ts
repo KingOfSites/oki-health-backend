@@ -335,11 +335,14 @@ FORMATO EXATO:
   } catch (err: any) {
     console.error("AI ERROR:", err);
     return res.status(500).json({
-      error: "Erro interno na IA",
+      success: false,
+      error: "Houve uma falha de comunicação com o serviço de Inteligência Artificial. A chave de acesso (API Key) pode estar inválida ou o servidor offline.",
       details: err?.message || String(err)
     });
   }
 };
+
+router.post("/nutrition", authenticate, _nutritionHandler);
 
 // ====================================
 // 🔥 POST /api/ai/verify-gym (VERIFICAR ACADEMIA)
@@ -1016,7 +1019,14 @@ router.post("/verify-gym", authenticate, async (req, res) => {
     });
 
   } catch (err: any) {
-    console.error("❌ [AI Verify Gym] Erro:", err);
+    console.error("❌ [AI Verify Gym] ================= ERRO CRÍTICO ===================");
+    console.error("❌ [AI Verify Gym] Erro capturado no catch final da rota de validação:");
+    console.error("❌ Mensagem:", err?.message || err);
+    console.error("❌ Tipo do erro:", err?.name || "Desconhecido");
+    if (err?.status) console.error("❌ Status HTTP (OpenAI):", err.status);
+    if (err?.error) console.error("❌ Body de Erro (OpenAI):", JSON.stringify(err.error));
+    if (err?.code) console.error("❌ Código de Erro (OpenAI):", err.code);
+    console.error("❌ ================================================================");
     
     // EXIBE MENSAGEM DE ERRO NA TELA PARA O USUÁRIO (O FRONT LÊ O REASON DO BANCO)
     if (req.body && req.body.messageId) {

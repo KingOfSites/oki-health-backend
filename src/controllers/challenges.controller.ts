@@ -130,15 +130,13 @@ export class ChallengesController {
       // Validar que a data de início é a partir do dia seguinte
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      const startDateObj = new Date(startDate);
-      startDateObj.setHours(0, 0, 0, 0);
+
+      // Extrair apenas a data YYYY-MM-DD para evitar problemas de fuso horário na validação
+      const datePart = typeof startDate === 'string' ? startDate.split('T')[0] : new Date(startDate).toISOString().split('T')[0];
+      const [y, m, d] = datePart.split('-').map(Number);
+      const startDateObj = new Date(y, m - 1, d); // Meia-noite local do servidor
       
-      // Calcular diferença em dias
-      const diffTime = startDateObj.getTime() - today.getTime();
-      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-      
-      // A data deve ser pelo menos 1 dia no futuro (amanhã ou depois)
-      if (diffDays < 1) {
+      if (startDateObj.getTime() <= today.getTime()) {
         return res.status(400).json({
           success: false,
           message: "A data de início deve ser a partir de amanhã",

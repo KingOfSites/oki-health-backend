@@ -9,6 +9,12 @@ function computeChallengeStatus(c: { startDate: Date, endDate: Date, startTime?:
     const [h, m] = c.startTime.split(':');
     start.setHours(Number(h), Number(m), 0, 0);
   } else {
+    // Se é meia-noite UTC (como salvo pelo Prisma para datas puras), 
+    // garante que represente a meia-noite LOCAL do dia correto
+    const y = start.getUTCFullYear();
+    const m = start.getUTCMonth();
+    const d = start.getUTCDate();
+    start.setFullYear(y, m, d);
     start.setHours(0, 0, 0, 0);
   }
   

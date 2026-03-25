@@ -67,9 +67,8 @@ export class ChallengePaymentController {
       }
 
       const entry = challenge.entryPriceCents ?? 0;
-      const entryAmount = entry / 100; // valor de entrada em R$ (sem taxa para carteira)
-      const fee = 1500; // taxa fixa (em centavos) - apenas para PIX/Cartão
-      const amountWithFee = (entry + fee) / 100; // valor em R$ com taxa (para PIX/Cartão)
+      const entryAmount = entry / 100; // valor de entrada em R$
+      const amountWithFee = entryAmount; // Removida taxa fixa de R$ 15,00 conforme solicitação do usuário
 
       // ======================================================
       // 🔒 VERIFICAR SE JÁ EXISTE PAGAMENTO APROVADO E SE ESTÁ PARTICIPANDO

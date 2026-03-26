@@ -22,12 +22,7 @@ export interface SignupData {
   sexo: "M" | "F";
   pesoKg: number;
   alturaCm: number;
-  atividade:
-    | "sedentario"
-    | "leve"
-    | "moderado"
-    | "intenso"
-    | "muito_intenso";
+  atividade: "sedentario" | "leve" | "moderado" | "intenso" | "muito_intenso";
 }
 
 export interface SigninData {
@@ -132,7 +127,7 @@ export class AuthService {
         age: user.age,
         city: user.city,
 
-        sexo: (user.sexo === "M" || user.sexo === "F") ? user.sexo : null,
+        sexo: user.sexo === "M" || user.sexo === "F" ? user.sexo : null,
         peso: user.peso ?? null,
         altura: user.altura ?? null,
         atividade: user.atividade ?? null,
@@ -160,12 +155,15 @@ export class AuthService {
     }
 
     if (!user.password) {
-      throw new AppError(401, "Esta conta usa login social. Faça login com Google.");
+      throw new AppError(
+        401,
+        "Este email usa login social. Faça login com Google.",
+      );
     }
 
     const isPasswordValid = await PasswordUtils.compare(
       data.password,
-      user.password
+      user.password,
     );
 
     if (!isPasswordValid) {
@@ -183,7 +181,7 @@ export class AuthService {
         age: user.age,
         city: user.city,
 
-        sexo: (user.sexo === "M" || user.sexo === "F") ? user.sexo : null,
+        sexo: user.sexo === "M" || user.sexo === "F" ? user.sexo : null,
         peso: user.peso ?? null,
         altura: user.altura ?? null,
         atividade: user.atividade ?? null,
@@ -202,14 +200,18 @@ export class AuthService {
   // ----------------------------------------------------
   // GOOGLE SIGN-IN (Mobile — idToken)
   // ----------------------------------------------------
-  static async googleSignIn(idToken: string): Promise<AuthResponse & { isNew: boolean }> {
+  static async googleSignIn(
+    idToken: string,
+  ): Promise<AuthResponse & { isNew: boolean }> {
     // Valida o idToken diretamente no Google
-    const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${idToken}`);
+    const res = await fetch(
+      `https://oauth2.googleapis.com/tokeninfo?id_token=${idToken}`,
+    );
     if (!res.ok) {
       throw new AppError(401, "Token do Google inválido");
     }
 
-    const payload = await res.json() as any;
+    const payload = (await res.json()) as any;
     const googleId: string = payload.sub;
     const email: string = payload.email;
     const name: string = payload.name || email.split("@")[0];
@@ -226,7 +228,14 @@ export class AuthService {
 
     if (!user) {
       user = await prisma.user.create({
-        data: { googleId, email, name, avatar_url: picture, password: null, isPro: false },
+        data: {
+          googleId,
+          email,
+          name,
+          avatar_url: picture,
+          password: null,
+          isPro: false,
+        },
       });
       isNew = true;
     } else if (!user.googleId) {
@@ -247,7 +256,7 @@ export class AuthService {
         name: user.name,
         age: user.age as number,
         city: user.city as string,
-        sexo: (user.sexo === "M" || user.sexo === "F") ? user.sexo : null,
+        sexo: user.sexo === "M" || user.sexo === "F" ? user.sexo : null,
         peso: user.peso ?? null,
         altura: user.altura ?? null,
         atividade: user.atividade ?? null,
@@ -263,7 +272,10 @@ export class AuthService {
   // ----------------------------------------------------
   // GOOGLE OAUTH CALLBACK
   // ----------------------------------------------------
-  static async googleCallback(code: string, redirectUri: string): Promise<AuthResponse & { isNew: boolean }> {
+  static async googleCallback(
+    code: string,
+    redirectUri: string,
+  ): Promise<AuthResponse & { isNew: boolean }> {
     if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) {
       throw new AppError(500, "Google OAuth não configurado no servidor");
     }
@@ -281,17 +293,23 @@ export class AuthService {
       }),
     });
 
-    const tokenData = await tokenRes.json() as any;
+    const tokenData = (await tokenRes.json()) as any;
     if (!tokenRes.ok) {
-      throw new AppError(400, tokenData.error_description || "Falha ao trocar código com o Google");
+      throw new AppError(
+        400,
+        tokenData.error_description || "Falha ao trocar código com o Google",
+      );
     }
 
     // 2. Buscar dados do usuário no Google
-    const userInfoRes = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
-      headers: { Authorization: `Bearer ${tokenData.access_token}` },
-    });
+    const userInfoRes = await fetch(
+      "https://www.googleapis.com/oauth2/v2/userinfo",
+      {
+        headers: { Authorization: `Bearer ${tokenData.access_token}` },
+      },
+    );
 
-    const googleUser = await userInfoRes.json() as any;
+    const googleUser = (await userInfoRes.json()) as any;
     if (!userInfoRes.ok) {
       throw new AppError(400, "Falha ao buscar dados do Google");
     }
@@ -300,10 +318,7 @@ export class AuthService {
     let isNew = false;
     let user = await prisma.user.findFirst({
       where: {
-        OR: [
-          { googleId: googleUser.id },
-          { email: googleUser.email },
-        ],
+        OR: [{ googleId: googleUser.id }, { email: googleUser.email }],
       },
     });
 
@@ -340,7 +355,7 @@ export class AuthService {
         name: user.name,
         age: user.age as number,
         city: user.city as string,
-        sexo: (user.sexo === "M" || user.sexo === "F") ? user.sexo : null,
+        sexo: user.sexo === "M" || user.sexo === "F" ? user.sexo : null,
         peso: user.peso ?? null,
         altura: user.altura ?? null,
         atividade: user.atividade ?? null,
@@ -358,7 +373,13 @@ export class AuthService {
   // ----------------------------------------------------
   static async appleSignIn(
     identityToken: string,
-    userInfo?: { email?: string | null; fullName?: { givenName?: string | null; familyName?: string | null } | null }
+    userInfo?: {
+      email?: string | null;
+      fullName?: {
+        givenName?: string | null;
+        familyName?: string | null;
+      } | null;
+    },
   ): Promise<AuthResponse & { isNew: boolean }> {
     // 1. Decodificar o header do JWT para obter o kid
     const decoded = jwt.decode(identityToken, { complete: true });
@@ -373,10 +394,13 @@ export class AuthService {
     if (!keysRes.ok) {
       throw new AppError(502, "Falha ao buscar chaves públicas da Apple");
     }
-    const { keys } = await keysRes.json() as { keys: any[] };
+    const { keys } = (await keysRes.json()) as { keys: any[] };
     const matchingKey = keys.find((k: any) => k.kid === kid);
     if (!matchingKey) {
-      throw new AppError(401, "Chave pública da Apple não encontrada para este token");
+      throw new AppError(
+        401,
+        "Chave pública da Apple não encontrada para este token",
+      );
     }
 
     // 3. Verificar assinatura do token
@@ -395,7 +419,7 @@ export class AuthService {
     const familyName = userInfo?.fullName?.familyName;
     const name = givenName
       ? [givenName, familyName].filter(Boolean).join(" ")
-      : email?.split("@")[0] ?? "Usuário Apple";
+      : (email?.split("@")[0] ?? "Usuário Apple");
 
     if (!appleId) {
       throw new AppError(401, "Dados insuficientes no token da Apple");
@@ -409,7 +433,10 @@ export class AuthService {
 
     if (!user) {
       if (!email) {
-        throw new AppError(400, "Email não disponível. Faça login novamente e autorize o compartilhamento de email.");
+        throw new AppError(
+          400,
+          "Email não disponível. Faça login novamente e autorize o compartilhamento de email.",
+        );
       }
       user = await prisma.user.create({
         data: { appleId, email, name, password: null, isPro: false },
@@ -433,7 +460,7 @@ export class AuthService {
         name: user.name,
         age: user.age as number,
         city: user.city as string,
-        sexo: (user.sexo === "M" || user.sexo === "F") ? user.sexo : null,
+        sexo: user.sexo === "M" || user.sexo === "F" ? user.sexo : null,
         peso: user.peso ?? null,
         altura: user.altura ?? null,
         atividade: user.atividade ?? null,
@@ -449,16 +476,20 @@ export class AuthService {
   // ----------------------------------------------------
   // FACEBOOK SIGN-IN (Mobile — accessToken)
   // ----------------------------------------------------
-  static async facebookSignIn(token: string): Promise<AuthResponse & { isNew: boolean }> {
+  static async facebookSignIn(
+    token: string,
+  ): Promise<AuthResponse & { isNew: boolean }> {
     // Busca dados do usuário no Graph API do Facebook
-    const res = await fetch(`https://graph.facebook.com/me?fields=id,name,email,picture.type(large)&access_token=${token}`);
-    
+    const res = await fetch(
+      `https://graph.facebook.com/me?fields=id,name,email,picture.type(large)&access_token=${token}`,
+    );
+
     if (!res.ok) {
       throw new AppError(401, "Token do Facebook inválido");
     }
 
-    const payload = await res.json() as any;
-    
+    const payload = (await res.json()) as any;
+
     // Facebook Graph API não retorna email garantidamente, depende das permissões e se o usuário tem email configurado
     const facebookId: string = payload.id;
     const name: string = payload.name;
@@ -476,10 +507,20 @@ export class AuthService {
 
     if (!user) {
       if (!email) {
-        throw new AppError(400, "Email não disponível. Faça login novamente e autorize o compartilhamento de email.");
+        throw new AppError(
+          400,
+          "Email não disponível. Faça login novamente e autorize o compartilhamento de email.",
+        );
       }
       user = await prisma.user.create({
-        data: { facebookId, email, name, avatar_url: picture, password: null, isPro: false },
+        data: {
+          facebookId,
+          email,
+          name,
+          avatar_url: picture,
+          password: null,
+          isPro: false,
+        },
       });
       isNew = true;
     } else if (!user.facebookId) {
@@ -500,7 +541,7 @@ export class AuthService {
         name: user.name,
         age: user.age as number,
         city: user.city as string,
-        sexo: (user.sexo === "M" || user.sexo === "F") ? user.sexo : null,
+        sexo: user.sexo === "M" || user.sexo === "F" ? user.sexo : null,
         peso: user.peso ?? null,
         altura: user.altura ?? null,
         atividade: user.atividade ?? null,
@@ -559,8 +600,13 @@ export class AuthService {
       sexo?: "M" | "F";
       peso?: number;
       altura?: number;
-      atividade?: "sedentario" | "leve" | "moderado" | "intenso" | "muito_intenso";
-    }
+      atividade?:
+        | "sedentario"
+        | "leve"
+        | "moderado"
+        | "intenso"
+        | "muito_intenso";
+    },
   ) {
     // Verificar se o usuário existe (apenas id para evitar referências circulares)
     const userExists = await prisma.user.findUnique({
@@ -573,7 +619,7 @@ export class AuthService {
     }
 
     const updateData: any = {};
-    
+
     if (data.name !== undefined) updateData.name = data.name;
     if (data.age !== undefined) updateData.age = data.age;
     if (data.city !== undefined) updateData.city = data.city;

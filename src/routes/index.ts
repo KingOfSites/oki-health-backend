@@ -49,4 +49,8 @@ router.use("/gamification", gamificationRoutes);
 // 🔥 Nutrição (análise sem IA)
 router.use("/nutrition", nutritionRoutes);
 
+// 🔥 Evolução de peso
+import weightsRoutes from "./weights.routes";
+router.use("/weights", weightsRoutes);
+
 export default router;

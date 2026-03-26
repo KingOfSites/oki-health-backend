@@ -11,14 +11,14 @@ const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY!,
 });
 
-
 // ====================================
 // 🔥 POST /api/ai/nutrition — DESABILITADO (Fase 2)
 // ====================================
 router.post("/nutrition", authenticate, async (_req, res) => {
   return res.status(503).json({
     success: false,
-    error: "A análise nutricional por IA está temporariamente indisponível nesta fase da plataforma.",
+    error:
+      "A análise nutricional por IA está temporariamente indisponível nesta fase da plataforma.",
     disabled: true,
   });
 });
@@ -31,7 +31,10 @@ const _nutritionHandler = async (req: any, res: any) => {
 
     console.log("🔐 [AI Route] ========== INÍCIO DA VERIFICAÇÃO ==========");
     console.log("🔐 [AI Route] Token extraído - userId:", userId);
-    console.log("🔐 [AI Route] Headers authorization:", req.headers.authorization ? "Presente" : "Ausente");
+    console.log(
+      "🔐 [AI Route] Headers authorization:",
+      req.headers.authorization ? "Presente" : "Ausente",
+    );
 
     if (!userId) {
       console.log("❌ [AI Route] userId não encontrado no request");
@@ -44,7 +47,7 @@ const _nutritionHandler = async (req: any, res: any) => {
 
     // Verificar se usuário é PRO
     const prisma = (await import("../config/database")).default;
-    
+
     // Buscar apenas os campos necessários para evitar referências circulares
     const userFull = await prisma.user.findUnique({
       where: { id: userId },
@@ -56,62 +59,88 @@ const _nutritionHandler = async (req: any, res: any) => {
       email: userFull?.email,
       isPro: userFull?.isPro,
     });
-    
+
     // Verificar se o userId do token corresponde a um usuário real no banco
     if (!userFull) {
-      console.log("❌ [AI Route] ERRO CRÍTICO: userId do token não existe no banco!");
+      console.log(
+        "❌ [AI Route] ERRO CRÍTICO: userId do token não existe no banco!",
+      );
       console.log("❌ [AI Route] userId do token:", userId);
-      return res.status(401).json({ 
+      return res.status(401).json({
         success: false,
         error: "Token inválido - usuário não encontrado",
-        premium: false 
+        premium: false,
       });
     }
-    
+
     // Query SQL direta para garantir que estamos pegando o valor correto
     const rawQuery = await prisma.$queryRaw<Array<{ isPro: number }>>`
       SELECT isPro FROM users WHERE id = ${userId}
     `;
-    
+
     console.log("🔍 [AI Route] Query SQL direta resultado:", rawQuery);
     const rawIsPro = rawQuery[0]?.isPro;
-    console.log("🔍 [AI Route] isPro da query SQL direta:", rawIsPro, "Tipo:", typeof rawIsPro);
+    console.log(
+      "🔍 [AI Route] isPro da query SQL direta:",
+      rawIsPro,
+      "Tipo:",
+      typeof rawIsPro,
+    );
 
     // Verificar campo isPro diretamente no usuário (usando query SQL direta)
     const userPro = await prisma.user.findUnique({
       where: { id: userId },
-      select: { isPro: true } as any
+      select: { isPro: true } as any,
     });
 
     console.log("🔍 [AI Route] userId consultado:", userId);
     console.log("🔍 [AI Route] isPro do banco (raw):", (userPro as any)?.isPro);
-    console.log("🔍 [AI Route] isPro do banco (tipo):", typeof (userPro as any)?.isPro);
+    console.log(
+      "🔍 [AI Route] isPro do banco (tipo):",
+      typeof (userPro as any)?.isPro,
+    );
     console.log("🔍 [AI Route] isPro === 0:", (userPro as any)?.isPro === 0);
-    console.log("🔍 [AI Route] isPro === false:", (userPro as any)?.isPro === false);
+    console.log(
+      "🔍 [AI Route] isPro === false:",
+      (userPro as any)?.isPro === false,
+    );
     console.log("🔍 [AI Route] isPro === 1:", (userPro as any)?.isPro === 1);
-    console.log("🔍 [AI Route] isPro === true:", (userPro as any)?.isPro === true);
+    console.log(
+      "🔍 [AI Route] isPro === true:",
+      (userPro as any)?.isPro === true,
+    );
 
     // IMPORTANTE: Verificar explicitamente se isPro é true (1) ou false (0)
     // No MySQL, tinyint(1) pode retornar como número, então convertemos explicitamente
     if (!userPro) {
       console.log("❌ [AI Route] Usuário não encontrado");
-      return res.status(403).json({ 
+      return res.status(403).json({
         success: false,
         error: "Usuário não encontrado",
-        premium: false 
+        premium: false,
       });
     }
 
     // Usar o valor da query SQL direta se disponível, senão usar o Prisma
-    const isProValue = rawIsPro !== undefined ? rawIsPro : (userPro as any).isPro;
-    
+    const isProValue =
+      rawIsPro !== undefined ? rawIsPro : (userPro as any).isPro;
+
     // Converter para boolean de forma explícita
     // Aceita: true, 1, "1" como verdadeiro
     // Rejeita: false, 0, "0", null, undefined como falso
-    const isProBoolean = Boolean(isProValue) && (isProValue === true || isProValue === 1 || isProValue === '1');
-    
-    console.log("🔍 [AI Route] Valor isPro:", isProValue, "Tipo:", typeof isProValue, "Boolean:", isProBoolean);
-    
+    const isProBoolean =
+      Boolean(isProValue) &&
+      (isProValue === true || isProValue === 1 || isProValue === "1");
+
+    console.log(
+      "🔍 [AI Route] Valor isPro:",
+      isProValue,
+      "Tipo:",
+      typeof isProValue,
+      "Boolean:",
+      isProBoolean,
+    );
+
     // Se isPro NÃO for verdadeiro, negar acesso
     if (!isProBoolean) {
       console.log("❌ [AI Route] ========== ACESSO NEGADO ==========");
@@ -120,10 +149,11 @@ const _nutritionHandler = async (req: any, res: any) => {
       console.log("❌ [AI Route] isPro type:", typeof isProValue);
       console.log("❌ [AI Route] isPro boolean:", isProBoolean);
       console.log("❌ [AI Route] ====================================");
-      return res.status(403).json({ 
+      return res.status(403).json({
         success: false,
-        error: "Recurso exclusivo para assinantes PRO. Faça upgrade para PRO para usar esta funcionalidade.",
-        premium: false 
+        error:
+          "Recurso exclusivo para assinantes PRO. Faça upgrade para PRO para usar esta funcionalidade.",
+        premium: false,
       });
     }
 
@@ -135,12 +165,26 @@ const _nutritionHandler = async (req: any, res: any) => {
     // Buscar dados nutricionais do usuário
     const userData = await prisma.user.findUnique({
       where: { id: userId },
-      select: { sexo: true, peso: true, altura: true, age: true, atividade: true }
+      select: {
+        sexo: true,
+        peso: true,
+        altura: true,
+        age: true,
+        atividade: true,
+      },
     });
 
-    if (!userData || !userData.peso || !userData.altura || !userData.sexo || !userData.age || !userData.atividade) {
-      return res.status(400).json({ 
-        error: "Complete seu perfil (sexo, peso, altura, idade, atividade) para usar esta funcionalidade" 
+    if (
+      !userData ||
+      !userData.peso ||
+      !userData.altura ||
+      !userData.sexo ||
+      !userData.age ||
+      !userData.atividade
+    ) {
+      return res.status(400).json({
+        error:
+          "Complete seu perfil (sexo, peso, altura, idade, atividade) para usar esta funcionalidade",
       });
     }
 
@@ -201,7 +245,7 @@ FORMATO EXATO:
       messages: [
         {
           role: "system",
-          content: prompt
+          content: prompt,
         },
         {
           role: "user",
@@ -209,15 +253,15 @@ FORMATO EXATO:
             {
               type: "image_url",
               image_url: {
-                url: `data:image/jpeg;base64,${imageBase64}`
-              }
+                url: `data:image/jpeg;base64,${imageBase64}`,
+              },
             },
             {
               type: "text",
-              text: `Sexo: ${sexo}, Peso: ${peso}kg, Altura: ${altura}cm, Idade: ${idade} anos, Atividade: ${atividade}`
-            }
-          ]
-        }
+              text: `Sexo: ${sexo}, Peso: ${peso}kg, Altura: ${altura}cm, Idade: ${idade} anos, Atividade: ${atividade}`,
+            },
+          ],
+        },
       ],
       max_tokens: 1000,
     });
@@ -230,7 +274,7 @@ FORMATO EXATO:
     if (!aiText) {
       return res.status(500).json({
         error: "A IA não retornou texto",
-        raw: result
+        raw: result,
       });
     }
 
@@ -250,7 +294,7 @@ FORMATO EXATO:
     if (firstBrace === -1 || lastBrace === -1) {
       return res.status(500).json({
         error: "IA não retornou JSON válido",
-        raw: clean
+        raw: clean,
       });
     }
 
@@ -266,34 +310,34 @@ FORMATO EXATO:
       console.error("Erro ao parsear JSON:", clean);
       return res.status(500).json({
         error: "JSON inválido retornado pela IA",
-        raw: clean
+        raw: clean,
       });
     }
 
     console.log("✅ [AI Route] Análise concluída com sucesso");
     console.log("✅ [AI Route] JSON retornado:", JSON.stringify(json, null, 2));
-    
+
     // Verificar se já houve uma análise hoje para este usuário
     let pointsAwarded = 0;
     let isFirstAnalysisToday = false;
-    
+
     try {
       // Verificar análises de hoje
-      const todayAnalyses = await prisma.$queryRawUnsafe(
+      const todayAnalyses = (await prisma.$queryRawUnsafe(
         `SELECT COUNT(*) as count 
          FROM nutrition_analyses 
          WHERE userId = ? 
            AND DATE(created_at) = CURDATE()`,
-        userId
-      ) as any[];
-      
+        userId,
+      )) as any[];
+
       const analysisCount = todayAnalyses[0]?.count || 0;
       isFirstAnalysisToday = analysisCount === 0;
-      
+
       // Só adicionar pontos se for a primeira análise do dia
       if (isFirstAnalysisToday) {
         const pointsToAdd = 10; // 10 pontos por dia
-        
+
         // Adicionar XP ao usuário
         await prisma.user.update({
           where: { id: userId },
@@ -303,13 +347,17 @@ FORMATO EXATO:
             },
           },
         });
-        
+
         pointsAwarded = pointsToAdd;
-        console.log(`✅ [AI Nutrition] ${pointsToAdd} pontos (XP) adicionados ao usuário (primeira análise do dia)`);
+        console.log(
+          `✅ [AI Nutrition] ${pointsToAdd} pontos (XP) adicionados ao usuário (primeira análise do dia)`,
+        );
       } else {
-        console.log(`ℹ️ [AI Nutrition] Usuário já fez ${analysisCount} análise(ões) hoje. Nenhum ponto adicionado.`);
+        console.log(
+          `ℹ️ [AI Nutrition] Usuário já fez ${analysisCount} análise(ões) hoje. Nenhum ponto adicionado.`,
+        );
       }
-      
+
       // Salvar registro da análise no banco
       await prisma.nutritionAnalysis.create({
         data: {
@@ -318,26 +366,31 @@ FORMATO EXATO:
           pointsAwarded,
         },
       });
-      
-      console.log(`✅ [AI Nutrition] Análise salva no banco com ${pointsAwarded} pontos concedidos`);
+
+      console.log(
+        `✅ [AI Nutrition] Análise salva no banco com ${pointsAwarded} pontos concedidos`,
+      );
     } catch (pointsErr) {
-      console.error("⚠️ [AI Nutrition] Erro ao processar pontos ou salvar análise:", pointsErr);
+      console.error(
+        "⚠️ [AI Nutrition] Erro ao processar pontos ou salvar análise:",
+        pointsErr,
+      );
       // Não falhar a requisição se não conseguir adicionar pontos
     }
-    
+
     // Retornar análise com informações de pontos
     return res.json({
       ...json,
       pointsEarned: pointsAwarded,
       isFirstAnalysisToday,
     });
-
   } catch (err: any) {
     console.error("AI ERROR:", err);
     return res.status(500).json({
       success: false,
-      error: "Houve uma falha de comunicação com o serviço de Inteligência Artificial. A chave de acesso (API Key) pode estar inválida ou o servidor offline.",
-      details: err?.message || String(err)
+      error:
+        "Houve uma falha de comunicação com o serviço de Inteligência Artificial. A chave de acesso (API Key) pode estar inválida ou o servidor offline.",
+      details: err?.message || String(err),
     });
   }
 };
@@ -350,7 +403,12 @@ router.post("/nutrition", authenticate, _nutritionHandler);
 router.post("/verify-gym", authenticate, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { imageUrl, challengeId, messageId, messageTime: clientMessageTime } = req.body;
+    const {
+      imageUrl,
+      challengeId,
+      messageId,
+      messageTime: clientMessageTime,
+    } = req.body;
 
     if (!userId) {
       return res.status(401).json({ error: "Usuário não autenticado" });
@@ -361,23 +419,29 @@ router.post("/verify-gym", authenticate, async (req, res) => {
     }
 
     console.log("🏋️ [AI Verify Gym] Iniciando verificação de academia...");
-    console.log("🏋️ [AI Verify Gym] imageUrl:", imageUrl.substring(0, 50) + "...");
+    console.log(
+      "🏋️ [AI Verify Gym] imageUrl:",
+      imageUrl.substring(0, 50) + "...",
+    );
     console.log("🏋️ [AI Verify Gym] challengeId:", challengeId);
     console.log("🏋️ [AI Verify Gym] messageId:", messageId);
-    console.log("🏋️ [AI Verify Gym] clientMessageTime recebido:", clientMessageTime);
+    console.log(
+      "🏋️ [AI Verify Gym] clientMessageTime recebido:",
+      clientMessageTime,
+    );
 
     // Buscar informações completas do desafio e da mensagem
     const prisma = (await import("../config/database")).default;
     let challengeInfo = null;
     let messageInfo = null;
-    
+
     if (challengeId) {
       try {
         // Buscar informações completas do desafio incluindo horários
-        challengeInfo = await prisma.$queryRawUnsafe(
+        challengeInfo = (await prisma.$queryRawUnsafe(
           `SELECT id, title, description, startDate, endDate, category, startTime, endTime FROM challenges WHERE id = ?`,
-          challengeId
-        ) as any[];
+          challengeId,
+        )) as any[];
       } catch (err) {
         console.warn("⚠️ [AI Verify Gym] Erro ao buscar desafio:", err);
       }
@@ -387,30 +451,38 @@ router.post("/verify-gym", authenticate, async (req, res) => {
     // Isso garante que estamos usando exatamente o mesmo horário que o usuário vê
     let messageTime: string;
     let messageDate: string;
-    
-    if (clientMessageTime && typeof clientMessageTime === "string" && /^\d{2}:\d{2}$/.test(clientMessageTime)) {
+
+    if (
+      clientMessageTime &&
+      typeof clientMessageTime === "string" &&
+      /^\d{2}:\d{2}$/.test(clientMessageTime)
+    ) {
       // Cliente enviou o horário formatado (ex: "16:34") - USAR DIRETAMENTE SEM CONVERSÃO
       // Este é o horário EXATO que aparece na interface do usuário
       messageTime = clientMessageTime.trim();
-      console.log("🕐 [AI Verify Gym] ==========================================");
+      console.log(
+        "🕐 [AI Verify Gym] ==========================================",
+      );
       console.log("🕐 [AI Verify Gym] ✅✅✅ USANDO HORÁRIO DO CLIENTE");
       console.log("🕐 [AI Verify Gym] Horário recebido:", messageTime);
       console.log("🕐 [AI Verify Gym] Este é o MESMO horário da interface");
       console.log("🕐 [AI Verify Gym] ⚠️ NÃO FAZER NENHUMA CONVERSÃO");
-      console.log("🕐 [AI Verify Gym] ==========================================");
-      
+      console.log(
+        "🕐 [AI Verify Gym] ==========================================",
+      );
+
       // Buscar a mensagem apenas para pegar a data
       if (messageId) {
         try {
-          messageInfo = await prisma.$queryRawUnsafe(
+          messageInfo = (await prisma.$queryRawUnsafe(
             `SELECT id, created_at FROM challenge_chat WHERE id = ?`,
-            messageId
-          ) as any[];
+            messageId,
+          )) as any[];
         } catch (err) {
           console.warn("⚠️ [AI Verify Gym] Erro ao buscar mensagem:", err);
         }
       }
-      
+
       const message = messageInfo?.[0];
       if (message && message.created_at) {
         // Converter a data para o timezone do Brasil usando a mesma lógica do frontend
@@ -419,12 +491,12 @@ router.post("/verify-gym", authenticate, async (req, res) => {
           timeZone: "America/Sao_Paulo",
           year: "numeric",
           month: "2-digit",
-          day: "2-digit"
+          day: "2-digit",
         });
         const parts = formatter.formatToParts(messageCreatedAtRaw);
-        const day = parts.find(p => p.type === "day")?.value || "01";
-        const month = parts.find(p => p.type === "month")?.value || "01";
-        const year = parts.find(p => p.type === "year")?.value || "2024";
+        const day = parts.find((p) => p.type === "day")?.value || "01";
+        const month = parts.find((p) => p.type === "month")?.value || "01";
+        const year = parts.find((p) => p.type === "year")?.value || "2024";
         messageDate = `${day.padStart(2, "0")}/${month.padStart(2, "0")}/${year}`;
       } else {
         // Fallback: usar data/hora atual
@@ -433,19 +505,19 @@ router.post("/verify-gym", authenticate, async (req, res) => {
           timeZone: "America/Sao_Paulo",
           year: "numeric",
           month: "2-digit",
-          day: "2-digit"
+          day: "2-digit",
         });
         const parts = formatter.formatToParts(now);
-        const day = parts.find(p => p.type === "day")?.value || "01";
-        const month = parts.find(p => p.type === "month")?.value || "01";
-        const year = parts.find(p => p.type === "year")?.value || "2024";
+        const day = parts.find((p) => p.type === "day")?.value || "01";
+        const month = parts.find((p) => p.type === "month")?.value || "01";
+        const year = parts.find((p) => p.type === "year")?.value || "2024";
         messageDate = `${day.padStart(2, "0")}/${month.padStart(2, "0")}/${year}`;
       }
     } else {
       // Fallback: buscar e converter do banco (comportamento anterior)
       if (messageId) {
         try {
-          messageInfo = await prisma.$queryRawUnsafe(
+          messageInfo = (await prisma.$queryRawUnsafe(
             `SELECT 
               id, 
               created_at,
@@ -453,31 +525,39 @@ router.post("/verify-gym", authenticate, async (req, res) => {
               DATE_FORMAT(CONVERT_TZ(created_at, @@session.time_zone, 'America/Sao_Paulo'), '%d/%m/%Y') as data_br,
               CONVERT_TZ(created_at, @@session.time_zone, 'America/Sao_Paulo') as created_at_br
             FROM challenge_chat WHERE id = ?`,
-            messageId
-          ) as any[];
+            messageId,
+          )) as any[];
         } catch (err) {
-          console.warn("⚠️ [AI Verify Gym] Erro ao buscar com CONVERT_TZ, usando fallback:", err);
+          console.warn(
+            "⚠️ [AI Verify Gym] Erro ao buscar com CONVERT_TZ, usando fallback:",
+            err,
+          );
           try {
-            messageInfo = await prisma.$queryRawUnsafe(
+            messageInfo = (await prisma.$queryRawUnsafe(
               `SELECT id, created_at FROM challenge_chat WHERE id = ?`,
-              messageId
-            ) as any[];
+              messageId,
+            )) as any[];
           } catch (err2) {
-            console.warn("⚠️ [AI Verify Gym] Erro ao buscar mensagem (fallback):", err2);
+            console.warn(
+              "⚠️ [AI Verify Gym] Erro ao buscar mensagem (fallback):",
+              err2,
+            );
           }
         }
       }
 
       const message = messageInfo?.[0];
-      
+
       if (!message || !message.created_at) {
-        console.error("❌ [AI Verify Gym] Mensagem não encontrada ou sem created_at");
-        return res.status(400).json({ 
+        console.error(
+          "❌ [AI Verify Gym] Mensagem não encontrada ou sem created_at",
+        );
+        return res.status(400).json({
           error: "Mensagem não encontrada",
-          verified: false 
+          verified: false,
         });
       }
-      
+
       // Se o MySQL retornou hora_br e data_br (já convertidos), usar diretamente
       if (message.hora_br && message.data_br) {
         messageTime = message.hora_br;
@@ -492,67 +572,93 @@ router.post("/verify-gym", authenticate, async (req, res) => {
           hour12: false,
           year: "numeric",
           month: "2-digit",
-          day: "2-digit"
+          day: "2-digit",
         });
-        
+
         const parts = formatter.formatToParts(messageCreatedAtRaw);
-        const hour = parts.find(p => p.type === "hour")?.value || "00";
-        const minute = parts.find(p => p.type === "minute")?.value || "00";
-        const day = parts.find(p => p.type === "day")?.value || "01";
-        const month = parts.find(p => p.type === "month")?.value || "01";
-        const year = parts.find(p => p.type === "year")?.value || "2024";
-        
+        const hour = parts.find((p) => p.type === "hour")?.value || "00";
+        const minute = parts.find((p) => p.type === "minute")?.value || "00";
+        const day = parts.find((p) => p.type === "day")?.value || "01";
+        const month = parts.find((p) => p.type === "month")?.value || "01";
+        const year = parts.find((p) => p.type === "year")?.value || "2024";
+
         messageTime = `${hour.padStart(2, "0")}:${minute.padStart(2, "0")}`;
         messageDate = `${day.padStart(2, "0")}/${month.padStart(2, "0")}/${year}`;
       }
     }
-    
+
     console.log("🕐 [AI Verify Gym] ========== HORÁRIO FINAL ==========");
-    console.log("🕐 [AI Verify Gym] Horário da mensagem (Brasil):", messageTime);
+    console.log(
+      "🕐 [AI Verify Gym] Horário da mensagem (Brasil):",
+      messageTime,
+    );
     console.log("🕐 [AI Verify Gym] Data da mensagem (Brasil):", messageDate);
     console.log("🕐 [AI Verify Gym] ===================================");
-    
+
     const challenge = challengeInfo?.[0];
 
     // Função auxiliar para formatar horário (usada acima)
     const formatTimeForDisplay = (time: string) => {
       return time.replace(":", "h");
     };
-    
+
     // Extrair informações de horário do desafio
     let challengeTimeInfo = "";
     let expectedTimeRange = "";
     let extractedTimes: string[] = [];
-    
+
     if (challenge) {
       // PRIORIDADE 1: Usar horários do banco de dados (startTime e endTime)
       if (challenge.startTime && challenge.endTime) {
         // Converter formato HH:MM para formato legível (ex: "09:00" -> "09h00")
-        extractedTimes.push(`${formatTimeForDisplay(challenge.startTime)} às ${formatTimeForDisplay(challenge.endTime)}`);
+        extractedTimes.push(
+          `${formatTimeForDisplay(challenge.startTime)} às ${formatTimeForDisplay(challenge.endTime)}`,
+        );
         challengeTimeInfo = `Horários permitidos do desafio: ${challenge.startTime} às ${challenge.endTime}`;
       } else if (challenge.startTime) {
         // Apenas horário inicial
         extractedTimes.push(formatTimeForDisplay(challenge.startTime));
         challengeTimeInfo = `Horário inicial do desafio: ${challenge.startTime}`;
       }
-      
+
       // PRIORIDADE 2: Se não houver horários no banco, extrair do texto (fallback)
       if (extractedTimes.length === 0) {
         const title = challenge.title || "";
         const description = challenge.description || "";
         const fullText = `${title} ${description}`;
-        
+
         // Procurar por padrões de horário no texto (case insensitive)
         // Ordem importa: primeiro procurar intervalos, depois horários individuais
         const timePatterns = [
-          { pattern: /\b(\d{1,2})[h:](\d{2})\s*às?\s*(\d{1,2})[h:](\d{2})\b/gi, format: (m: RegExpMatchArray) => `${m[1]}h${m[2]} às ${m[3]}h${m[4]}` },
-          { pattern: /\b(\d{1,2})[h:](\d{2})\s*até\s*(\d{1,2})[h:](\d{2})\b/gi, format: (m: RegExpMatchArray) => `${m[1]}h${m[2]} até ${m[3]}h${m[4]}` },
-          { pattern: /\b(\d{1,2})[h:](\d{2})\s*-\s*(\d{1,2})[h:](\d{2})\b/g, format: (m: RegExpMatchArray) => `${m[1]}h${m[2]} - ${m[3]}h${m[4]}` },
-          { pattern: /\b(\d{1,2})[h:](\d{2})\b/g, format: (m: RegExpMatchArray) => `${m[1]}h${m[2]}` },
-          { pattern: /\b(\d{1,2})h\b/g, format: (m: RegExpMatchArray) => `${m[1]}h00` }, // Converter "9h" para "9h00"
-          { pattern: /\bàs?\s*(\d{1,2})[h:](\d{2})\b/gi, format: (m: RegExpMatchArray) => `às ${m[1]}h${m[2]}` },
+          {
+            pattern: /\b(\d{1,2})[h:](\d{2})\s*às?\s*(\d{1,2})[h:](\d{2})\b/gi,
+            format: (m: RegExpMatchArray) =>
+              `${m[1]}h${m[2]} às ${m[3]}h${m[4]}`,
+          },
+          {
+            pattern: /\b(\d{1,2})[h:](\d{2})\s*até\s*(\d{1,2})[h:](\d{2})\b/gi,
+            format: (m: RegExpMatchArray) =>
+              `${m[1]}h${m[2]} até ${m[3]}h${m[4]}`,
+          },
+          {
+            pattern: /\b(\d{1,2})[h:](\d{2})\s*-\s*(\d{1,2})[h:](\d{2})\b/g,
+            format: (m: RegExpMatchArray) =>
+              `${m[1]}h${m[2]} - ${m[3]}h${m[4]}`,
+          },
+          {
+            pattern: /\b(\d{1,2})[h:](\d{2})\b/g,
+            format: (m: RegExpMatchArray) => `${m[1]}h${m[2]}`,
+          },
+          {
+            pattern: /\b(\d{1,2})h\b/g,
+            format: (m: RegExpMatchArray) => `${m[1]}h00`,
+          }, // Converter "9h" para "9h00"
+          {
+            pattern: /\bàs?\s*(\d{1,2})[h:](\d{2})\b/gi,
+            format: (m: RegExpMatchArray) => `às ${m[1]}h${m[2]}`,
+          },
         ];
-        
+
         timePatterns.forEach(({ pattern, format }) => {
           const matches = fullText.matchAll(pattern);
           for (const match of matches) {
@@ -562,7 +668,7 @@ router.post("/verify-gym", authenticate, async (req, res) => {
             }
           }
         });
-        
+
         // Procurar por períodos do dia
         const periodPatterns = [
           { pattern: /\bmanhã\b/gi, label: "manhã" },
@@ -570,21 +676,21 @@ router.post("/verify-gym", authenticate, async (req, res) => {
           { pattern: /\bnoite\b/gi, label: "noite" },
           { pattern: /\bmadrugada\b/gi, label: "madrugada" },
         ];
-        
+
         const foundPeriods: string[] = [];
         periodPatterns.forEach(({ pattern, label }) => {
           if (pattern.test(fullText) && !foundPeriods.includes(label)) {
             foundPeriods.push(label);
           }
         });
-        
+
         if (extractedTimes.length > 0) {
           challengeTimeInfo = `Horários mencionados no desafio: ${extractedTimes.join(", ")}`;
         } else if (foundPeriods.length > 0) {
           challengeTimeInfo = `Período mencionado no desafio: ${foundPeriods.join(", ")}`;
         }
       }
-      
+
       // Determinar período do dia baseado no horário da mensagem (timezone do Brasil)
       const messageHour = parseInt(messageTime.split(":")[0]) || 0;
       let timeOfDay = "";
@@ -597,20 +703,22 @@ router.post("/verify-gym", authenticate, async (req, res) => {
       } else {
         timeOfDay = "madrugada";
       }
-      
+
       expectedTimeRange = `A mensagem foi enviada às ${messageTime} do dia ${messageDate} (${timeOfDay})`;
     }
 
     // Construir informações do desafio para o prompt
-    const challengeContext = challenge ? `
+    const challengeContext = challenge
+      ? `
     INFORMAÇÕES DO DESAFIO:
     - Título: ${challenge.title}
     - Descrição: ${challenge.description}
     - Período: ${challenge.startDate ? new Date(challenge.startDate).toLocaleDateString("pt-BR") : "N/A"} até ${challenge.endDate ? new Date(challenge.endDate).toLocaleDateString("pt-BR") : "N/A"}
     ${challengeTimeInfo ? `- Horários do desafio: ${challengeTimeInfo}` : ""}
     ${expectedTimeRange ? `- Faixa de horário esperada: ${expectedTimeRange}` : ""}
-    ` : "";
-    
+    `
+      : "";
+
     // PROMPT DA IA — VERIFICAÇÃO DE FOTO EM ACADEMIA
     const prompt = `
     Você é um sistema rigoroso de validação de fotos para desafios fitness com recompensa.
@@ -668,7 +776,6 @@ router.post("/verify-gym", authenticate, async (req, res) => {
     - Se confidence < 0.75 → verified deve ser false
     - Em caso de dúvida → verified = false
     `;
-    
 
     // Baixar a imagem da URL e converter para base64
     let imageBase64: string;
@@ -681,10 +788,10 @@ router.post("/verify-gym", authenticate, async (req, res) => {
       imageBase64 = Buffer.from(imageBuffer).toString("base64");
     } catch (err) {
       console.error("❌ [AI Verify Gym] Erro ao baixar imagem:", err);
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: "Erro ao processar imagem",
         verified: false,
-        reason: "Não foi possível baixar a imagem para análise"
+        reason: "Não foi possível baixar a imagem para análise",
       });
     }
 
@@ -694,7 +801,7 @@ router.post("/verify-gym", authenticate, async (req, res) => {
       messages: [
         {
           role: "system",
-          content: prompt
+          content: prompt,
         },
         {
           role: "user",
@@ -702,15 +809,15 @@ router.post("/verify-gym", authenticate, async (req, res) => {
             {
               type: "image_url",
               image_url: {
-                url: `data:image/jpeg;base64,${imageBase64}`
-              }
+                url: `data:image/jpeg;base64,${imageBase64}`,
+              },
             },
             {
               type: "text",
-              text: `Analise se esta foto foi tirada em uma academia. O horário será verificado separadamente usando o timestamp da mensagem (${messageDate} às ${messageTime}).\n${challengeContext}`
-            }
-          ]
-        }
+              text: `Analise se esta foto foi tirada em uma academia. O horário será verificado separadamente usando o timestamp da mensagem (${messageDate} às ${messageTime}).\n${challengeContext}`,
+            },
+          ],
+        },
       ],
       max_tokens: 500,
     });
@@ -721,7 +828,7 @@ router.post("/verify-gym", authenticate, async (req, res) => {
       return res.status(500).json({
         error: "A IA não retornou texto",
         verified: false,
-        reason: "Erro na análise da IA"
+        reason: "Erro na análise da IA",
       });
     }
 
@@ -738,7 +845,7 @@ router.post("/verify-gym", authenticate, async (req, res) => {
       return res.status(500).json({
         error: "IA não retornou JSON válido",
         verified: false,
-        reason: "Resposta da IA inválida"
+        reason: "Resposta da IA inválida",
       });
     }
 
@@ -752,32 +859,40 @@ router.post("/verify-gym", authenticate, async (req, res) => {
       return res.status(500).json({
         error: "JSON inválido retornado pela IA",
         verified: false,
-        reason: "Erro ao processar resposta da IA"
+        reason: "Erro ao processar resposta da IA",
       });
     }
 
     console.log("✅ [AI Verify Gym] Verificação concluída:", json);
-    console.log("🕐 [AI Verify Gym] Horários extraídos do desafio:", extractedTimes);
+    console.log(
+      "🕐 [AI Verify Gym] Horários extraídos do desafio:",
+      extractedTimes,
+    );
     console.log("🕐 [AI Verify Gym] Horário da mensagem:", messageTime);
 
     // Verificação adicional: comparar horário da mensagem com horário esperado
     let timeVerification = true;
     let timeVerificationReason = "";
-    
+
     if (challenge) {
       // Usar horário no timezone do Brasil
       const timeParts = messageTime.split(":");
       const messageHour = parseInt(timeParts[0]) || 0;
       const messageMinute = parseInt(timeParts[1]) || 0;
       const messageTimeMinutes = messageHour * 60 + messageMinute;
-      
+
       // Verificar se a mensagem foi enviada durante o período do desafio (datas)
       // Comparar apenas YYYY-MM-DD no timezone do Brasil para evitar problemas de fuso
       const startDate = new Date(challenge.startDate);
       const endDate = new Date(challenge.endDate);
       const brOpt = { timeZone: "America/Sao_Paulo" as const };
       const toYYYYMMDD = (d: Date) => {
-        const parts = new Intl.DateTimeFormat("fr-CA", { ...brOpt, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(d);
+        const parts = new Intl.DateTimeFormat("fr-CA", {
+          ...brOpt,
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).formatToParts(d);
         const y = parts.find((p) => p.type === "year")?.value ?? "2024";
         const m = parts.find((p) => p.type === "month")?.value ?? "01";
         const day = parts.find((p) => p.type === "day")?.value ?? "01";
@@ -793,9 +908,23 @@ router.post("/verify-gym", authenticate, async (req, res) => {
       const year = dateParts[2] || "2024";
       const messageStr = `${year}-${month}-${day}`;
 
-      console.log("📅 [AI Verify Gym] Período do desafio:", startDate.toLocaleDateString("pt-BR", brOpt), "até", endDate.toLocaleDateString("pt-BR", brOpt));
-      console.log("📅 [AI Verify Gym] Data da mensagem:", messageDate, "→", messageStr);
-      console.log("📅 [AI Verify Gym] Comparação (YYYY-MM-DD):", { messageStr, startStr, endStr });
+      console.log(
+        "📅 [AI Verify Gym] Período do desafio:",
+        startDate.toLocaleDateString("pt-BR", brOpt),
+        "até",
+        endDate.toLocaleDateString("pt-BR", brOpt),
+      );
+      console.log(
+        "📅 [AI Verify Gym] Data da mensagem:",
+        messageDate,
+        "→",
+        messageStr,
+      );
+      console.log("📅 [AI Verify Gym] Comparação (YYYY-MM-DD):", {
+        messageStr,
+        startStr,
+        endStr,
+      });
 
       if (messageStr < startStr || messageStr > endStr) {
         timeVerification = false;
@@ -803,62 +932,94 @@ router.post("/verify-gym", authenticate, async (req, res) => {
         console.log("❌ [AI Verify Gym] Mensagem fora do período do desafio");
       } else if (challenge.startTime && challenge.endTime) {
         // PRIORIDADE 1: Usar horários do banco de dados diretamente
-        const [startHour, startMin] = challenge.startTime.split(":").map(Number);
+        const [startHour, startMin] = challenge.startTime
+          .split(":")
+          .map(Number);
         const [endHour, endMin] = challenge.endTime.split(":").map(Number);
         const startMinutes = startHour * 60 + startMin;
         const endMinutes = endHour * 60 + endMin;
-        
-        console.log(`🕐 [AI Verify Gym] Horários do banco: ${challenge.startTime} às ${challenge.endTime} (${startMinutes}min - ${endMinutes}min)`);
-        console.log(`🕐 [AI Verify Gym] Horário da mensagem extraído: ${messageTime}`);
-        console.log(`🕐 [AI Verify Gym] Horário da mensagem em minutos: ${messageTimeMinutes} minutos`);
-        console.log(`🕐 [AI Verify Gym] Comparação: ${messageTimeMinutes} >= ${startMinutes} && ${messageTimeMinutes} <= ${endMinutes}`);
-        
-        if (messageTimeMinutes >= startMinutes && messageTimeMinutes <= endMinutes) {
-          console.log(`✅ [AI Verify Gym] Horário ${messageTime} está dentro do intervalo permitido ${challenge.startTime} às ${challenge.endTime}`);
+
+        console.log(
+          `🕐 [AI Verify Gym] Horários do banco: ${challenge.startTime} às ${challenge.endTime} (${startMinutes}min - ${endMinutes}min)`,
+        );
+        console.log(
+          `🕐 [AI Verify Gym] Horário da mensagem extraído: ${messageTime}`,
+        );
+        console.log(
+          `🕐 [AI Verify Gym] Horário da mensagem em minutos: ${messageTimeMinutes} minutos`,
+        );
+        console.log(
+          `🕐 [AI Verify Gym] Comparação: ${messageTimeMinutes} >= ${startMinutes} && ${messageTimeMinutes} <= ${endMinutes}`,
+        );
+
+        if (
+          messageTimeMinutes >= startMinutes &&
+          messageTimeMinutes <= endMinutes
+        ) {
+          console.log(
+            `✅ [AI Verify Gym] Horário ${messageTime} está dentro do intervalo permitido ${challenge.startTime} às ${challenge.endTime}`,
+          );
         } else {
           timeVerification = false;
           const startTimeFormatted = `${startHour.toString().padStart(2, "0")}h${startMin.toString().padStart(2, "0")}`;
           const endTimeFormatted = `${endHour.toString().padStart(2, "0")}h${endMin.toString().padStart(2, "0")}`;
           timeVerificationReason = `Horário da mensagem (${messageTime}) não corresponde aos horários do desafio (${startTimeFormatted} às ${endTimeFormatted})`;
-          console.log(`❌ [AI Verify Gym] Horário ${messageTime} (${messageTimeMinutes}min) está fora do intervalo permitido ${challenge.startTime} (${startMinutes}min) às ${challenge.endTime} (${endMinutes}min)`);
+          console.log(
+            `❌ [AI Verify Gym] Horário ${messageTime} (${messageTimeMinutes}min) está fora do intervalo permitido ${challenge.startTime} (${startMinutes}min) às ${challenge.endTime} (${endMinutes}min)`,
+          );
         }
       } else if (extractedTimes.length > 0) {
         // Se há horários específicos mencionados, verificar se o horário da mensagem está dentro do intervalo
         let matchesTime = false;
         const tolerance = 30; // 30 minutos de tolerância para horários exatos
-        
+
         console.log("🕐 [AI Verify Gym] Verificando horários específicos...");
         console.log("🕐 [AI Verify Gym] Horários extraídos:", extractedTimes);
-        console.log("🕐 [AI Verify Gym] Horário da mensagem:", messageTime, `(${messageTimeMinutes} minutos)`);
-        
+        console.log(
+          "🕐 [AI Verify Gym] Horário da mensagem:",
+          messageTime,
+          `(${messageTimeMinutes} minutos)`,
+        );
+
         // Extrair todos os horários numéricos de todos os padrões encontrados
         const allTimeMinutes: number[] = [];
-        
+
         for (const timeStr of extractedTimes) {
           // Verificar se é um intervalo (contém "às" ou "até")
-          if (timeStr.includes("às") || timeStr.includes("até") || timeStr.includes("a")) {
+          if (
+            timeStr.includes("às") ||
+            timeStr.includes("até") ||
+            timeStr.includes("a")
+          ) {
             // Extrair horários do formato "09h00 às 12h00" ou "09h às 12h"
             const intervalMatch = timeStr.match(/(\d{1,2})h(\d{2})?/g);
             if (intervalMatch && intervalMatch.length >= 2) {
               const startTime = intervalMatch[0];
               const endTime = intervalMatch[1];
-              
+
               const startParts = startTime.replace("h", ":").split(":");
               const startHour = parseInt(startParts[0]);
               const startMinute = startParts[1] ? parseInt(startParts[1]) : 0;
               const startMinutes = startHour * 60 + startMinute;
-              
+
               const endParts = endTime.replace("h", ":").split(":");
               const endHour = parseInt(endParts[0]);
               const endMinute = endParts[1] ? parseInt(endParts[1]) : 0;
               const endMinutes = endHour * 60 + endMinute;
-              
-              console.log(`🕐 [AI Verify Gym] Intervalo encontrado: ${startHour}h${startMinute.toString().padStart(2, "0")} às ${endHour}h${endMinute.toString().padStart(2, "0")} (${startMinutes}min - ${endMinutes}min)`);
-              
+
+              console.log(
+                `🕐 [AI Verify Gym] Intervalo encontrado: ${startHour}h${startMinute.toString().padStart(2, "0")} às ${endHour}h${endMinute.toString().padStart(2, "0")} (${startMinutes}min - ${endMinutes}min)`,
+              );
+
               // Verificar se o horário da mensagem está dentro do intervalo
-              if (messageTimeMinutes >= startMinutes && messageTimeMinutes <= endMinutes) {
+              if (
+                messageTimeMinutes >= startMinutes &&
+                messageTimeMinutes <= endMinutes
+              ) {
                 matchesTime = true;
-                console.log(`✅ [AI Verify Gym] Horário ${messageTime} está dentro do intervalo ${startHour}h${startMinute.toString().padStart(2, "0")} às ${endHour}h${endMinute.toString().padStart(2, "0")}`);
+                console.log(
+                  `✅ [AI Verify Gym] Horário ${messageTime} está dentro do intervalo ${startHour}h${startMinute.toString().padStart(2, "0")} às ${endHour}h${endMinute.toString().padStart(2, "0")}`,
+                );
                 break;
               }
             }
@@ -876,7 +1037,7 @@ router.post("/verify-gym", authenticate, async (req, res) => {
             }
           }
         }
-        
+
         // Se não encontrou intervalo, verificar se há múltiplos horários únicos
         // Nesse caso, considerar como intervalo entre o menor e o maior
         if (!matchesTime && allTimeMinutes.length > 0) {
@@ -885,37 +1046,53 @@ router.post("/verify-gym", authenticate, async (req, res) => {
             const targetTime = allTimeMinutes[0];
             if (Math.abs(messageTimeMinutes - targetTime) <= tolerance) {
               matchesTime = true;
-              console.log(`✅ [AI Verify Gym] Horário ${messageTime} está próximo de ${Math.floor(targetTime / 60)}h${(targetTime % 60).toString().padStart(2, "0")} (tolerância: ${tolerance}min)`);
+              console.log(
+                `✅ [AI Verify Gym] Horário ${messageTime} está próximo de ${Math.floor(targetTime / 60)}h${(targetTime % 60).toString().padStart(2, "0")} (tolerância: ${tolerance}min)`,
+              );
             }
           } else {
             // Múltiplos horários - considerar como intervalo
             const minTime = Math.min(...allTimeMinutes);
             const maxTime = Math.max(...allTimeMinutes);
-            
-            console.log(`🕐 [AI Verify Gym] Múltiplos horários detectados: intervalo de ${Math.floor(minTime / 60)}h${(minTime % 60).toString().padStart(2, "0")} até ${Math.floor(maxTime / 60)}h${(maxTime % 60).toString().padStart(2, "0")}`);
-            
-            if (messageTimeMinutes >= minTime && messageTimeMinutes <= maxTime) {
+
+            console.log(
+              `🕐 [AI Verify Gym] Múltiplos horários detectados: intervalo de ${Math.floor(minTime / 60)}h${(minTime % 60).toString().padStart(2, "0")} até ${Math.floor(maxTime / 60)}h${(maxTime % 60).toString().padStart(2, "0")}`,
+            );
+
+            if (
+              messageTimeMinutes >= minTime &&
+              messageTimeMinutes <= maxTime
+            ) {
               matchesTime = true;
-              console.log(`✅ [AI Verify Gym] Horário ${messageTime} está dentro do intervalo entre os horários permitidos`);
+              console.log(
+                `✅ [AI Verify Gym] Horário ${messageTime} está dentro do intervalo entre os horários permitidos`,
+              );
             }
           }
         }
-        
+
         if (!matchesTime) {
           timeVerification = false;
-          const timeRange = extractedTimes.length > 1 
-            ? `entre ${extractedTimes.join(" e ")}`
-            : extractedTimes.join(", ");
+          const timeRange =
+            extractedTimes.length > 1
+              ? `entre ${extractedTimes.join(" e ")}`
+              : extractedTimes.join(", ");
           timeVerificationReason = `Horário da mensagem (${messageTime}) não corresponde aos horários do desafio (${timeRange})`;
-          console.log("❌ [AI Verify Gym] Horário não corresponde aos horários do desafio");
+          console.log(
+            "❌ [AI Verify Gym] Horário não corresponde aos horários do desafio",
+          );
         } else {
-          console.log("✅ [AI Verify Gym] Horário corresponde aos horários do desafio");
+          console.log(
+            "✅ [AI Verify Gym] Horário corresponde aos horários do desafio",
+          );
         }
       } else {
-        console.log("ℹ️ [AI Verify Gym] Nenhum horário específico encontrado no desafio, apenas verificando período");
+        console.log(
+          "ℹ️ [AI Verify Gym] Nenhum horário específico encontrado no desafio, apenas verificando período",
+        );
       }
     }
-    
+
     // Verificação final: combinar resultado da IA (se é academia) com verificação de horário (timestamp da mensagem)
     // A IA só verifica se é academia, o horário é verificado usando o timestamp da mensagem
     const finalVerified = (json.verified || false) && timeVerification;
@@ -926,7 +1103,7 @@ router.post("/verify-gym", authenticate, async (req, res) => {
         const status = finalVerified ? "verified" : "rejected";
         const verifiedAt = finalVerified ? new Date() : null;
         const finalReason = timeVerificationReason || json.reason || "";
-        
+
         await prisma.$executeRawUnsafe(
           `UPDATE challenge_chat 
            SET verificationStatus = ?, 
@@ -936,26 +1113,26 @@ router.post("/verify-gym", authenticate, async (req, res) => {
           status,
           verifiedAt,
           finalReason,
-          messageId
+          messageId,
         );
-        
+
         console.log("✅ [AI Verify Gym] Status atualizado no banco:", status);
-        
+
         // Se a foto foi verificada, adicionar pontos ao participante (1 ponto por dia)
         if (finalVerified && userId) {
           try {
             // Verificar se o participante existe
-            const participant = await prisma.$queryRawUnsafe(
+            const participant = (await prisma.$queryRawUnsafe(
               `SELECT id FROM challenge_participants WHERE userId = ? AND challengeId = ?`,
               userId,
-              challengeId
-            ) as any[];
-            
+              challengeId,
+            )) as any[];
+
             if (participant && participant.length > 0) {
               // Verificar se já houve uma verificação hoje para este participante neste desafio
               // Buscar verificações de hoje (comparar apenas a data, ignorando horário)
               // Usar DATE() para comparar apenas a parte da data
-              const todayVerifications = await prisma.$queryRawUnsafe(
+              const todayVerifications = (await prisma.$queryRawUnsafe(
                 `SELECT COUNT(*) as count 
                  FROM challenge_chat 
                  WHERE userId = ? 
@@ -963,11 +1140,11 @@ router.post("/verify-gym", authenticate, async (req, res) => {
                    AND verificationStatus = 'verified' 
                    AND DATE(verifiedAt) = CURDATE()`,
                 userId,
-                challengeId
-              ) as any[];
-              
+                challengeId,
+              )) as any[];
+
               const verificationCount = todayVerifications[0]?.count || 0;
-              
+
               // Só adicionar ponto se for a primeira verificação do dia
               if (verificationCount === 0) {
                 const pointsToAdd = 1; // 1 ponto por dia
@@ -977,20 +1154,30 @@ router.post("/verify-gym", authenticate, async (req, res) => {
                    WHERE userId = ? AND challengeId = ?`,
                   pointsToAdd,
                   userId,
-                  challengeId
+                  challengeId,
                 );
-                console.log(`✅ [AI Verify Gym] ${pointsToAdd} ponto adicionado ao participante (primeira verificação do dia)`);
+                console.log(
+                  `✅ [AI Verify Gym] ${pointsToAdd} ponto adicionado ao participante (primeira verificação do dia)`,
+                );
               } else {
-                console.log(`ℹ️ [AI Verify Gym] Participante já recebeu ponto hoje (${verificationCount} verificação(ões) hoje). Não adicionando mais pontos.`);
+                console.log(
+                  `ℹ️ [AI Verify Gym] Participante já recebeu ponto hoje (${verificationCount} verificação(ões) hoje). Não adicionando mais pontos.`,
+                );
               }
             }
           } catch (pointsErr) {
-            console.error("⚠️ [AI Verify Gym] Erro ao adicionar pontos:", pointsErr);
+            console.error(
+              "⚠️ [AI Verify Gym] Erro ao adicionar pontos:",
+              pointsErr,
+            );
             // Não falhar a requisição se não conseguir adicionar pontos
           }
         }
       } catch (err) {
-        console.error("⚠️ [AI Verify Gym] Erro ao atualizar status no banco:", err);
+        console.error(
+          "⚠️ [AI Verify Gym] Erro ao atualizar status no banco:",
+          err,
+        );
         // Não falhar a requisição se não conseguir atualizar o banco
       }
     }
@@ -1001,10 +1188,13 @@ router.post("/verify-gym", authenticate, async (req, res) => {
       finalReason = timeVerificationReason || "";
     }
     if (!json.verified && json.reason) {
-      finalReason = finalReason ? `${finalReason}. ${json.reason}` : json.reason;
+      finalReason = finalReason
+        ? `${finalReason}. ${json.reason}`
+        : json.reason;
     }
     if (finalVerified) {
-      finalReason = "Foto verificada: é academia e foi enviada no horário correto do desafio.";
+      finalReason =
+        "Foto verificada: é academia e foi enviada no horário correto do desafio.";
     }
 
     return res.json({
@@ -1017,24 +1207,30 @@ router.post("/verify-gym", authenticate, async (req, res) => {
       timeVerification: timeVerification,
       aiVerification: json.verified || false,
     });
-
   } catch (err: any) {
-    console.error("❌ [AI Verify Gym] ================= ERRO CRÍTICO ===================");
-    console.error("❌ [AI Verify Gym] Erro capturado no catch final da rota de validação:");
+    console.error(
+      "❌ [AI Verify Gym] ================= ERRO CRÍTICO ===================",
+    );
+    console.error(
+      "❌ [AI Verify Gym] Erro capturado no catch final da rota de validação:",
+    );
     console.error("❌ Mensagem:", err?.message || err);
     console.error("❌ Tipo do erro:", err?.name || "Desconhecido");
     if (err?.status) console.error("❌ Status HTTP (OpenAI):", err.status);
-    if (err?.error) console.error("❌ Body de Erro (OpenAI):", JSON.stringify(err.error));
+    if (err?.error)
+      console.error("❌ Body de Erro (OpenAI):", JSON.stringify(err.error));
     if (err?.code) console.error("❌ Código de Erro (OpenAI):", err.code);
-    console.error("❌ ================================================================");
-    
+    console.error(
+      "❌ ================================================================",
+    );
+
     // EXIBE MENSAGEM DE ERRO NA TELA PARA O USUÁRIO (O FRONT LÊ O REASON DO BANCO)
     if (req.body && req.body.messageId) {
       try {
         const prisma = (await import("../config/database")).default;
         await prisma.$executeRawUnsafe(
           `UPDATE challenge_chat SET verificationStatus = 'rejected', verificationReason = '🚨 Erro na verificação: O serviço de inteligência artificial falhou ou está mal configurado. Tente novamente mais tarde.' WHERE id = ?`,
-          req.body.messageId
+          req.body.messageId,
         );
       } catch (dbErr) {}
     }
@@ -1043,11 +1239,10 @@ router.post("/verify-gym", authenticate, async (req, res) => {
       error: "Erro interno na verificação",
       verified: false,
       reason: err?.message || "Erro desconhecido",
-      details: err?.message || String(err)
+      details: err?.message || String(err),
     });
   }
 });
-
 
 // ====================================
 // 🔥 POST /api/ai/verify-weight-video (VERIFICAR VÍDEO DE PESAGEM)
@@ -1070,17 +1265,23 @@ router.post("/verify-weight-video", authenticate, async (req, res) => {
     if (/\.(jpg|jpeg|png|webp|gif|bmp)(\?|$)/i.test(urlLower)) {
       return res.status(400).json({
         error: "Para registro de pesagem é obrigatório enviar vídeo",
-        reason: "Fotos não são aceitas. Grave um vídeo mostrando a balança e o peso com clareza, no local cadastrado (casa, academia ou farmácia).",
+        reason:
+          "Fotos não são aceitas. Grave um vídeo mostrando a balança e o peso com clareza, no local cadastrado (casa, academia ou farmácia).",
       });
     }
 
-    console.log("⚖️ [AI Verify Weight Video] Iniciando verificação de vídeo de pesagem...");
-    console.log("⚖️ [AI Verify Weight Video] videoUrl:", videoUrl.substring(0, 50) + "...");
+    console.log(
+      "⚖️ [AI Verify Weight Video] Iniciando verificação de vídeo de pesagem...",
+    );
+    console.log(
+      "⚖️ [AI Verify Weight Video] videoUrl:",
+      videoUrl.substring(0, 50) + "...",
+    );
     console.log("⚖️ [AI Verify Weight Video] challengeId:", challengeId);
     console.log("⚖️ [AI Verify Weight Video] messageId:", messageId);
 
     const prisma = (await import("../config/database")).default;
-    
+
     // Buscar peso atual do usuário
     const userData = await prisma.user.findUnique({
       where: { id: userId },
@@ -1093,7 +1294,7 @@ router.post("/verify-weight-video", authenticate, async (req, res) => {
     // 1. Extrair frames do vídeo usando ffmpeg ou similar
     // 2. Enviar os frames para análise da OpenAI Vision API
     // 3. Combinar os resultados dos múltiplos frames
-    
+
     // Por enquanto, usando verificação simplificada baseada em critérios básicos
     // Em produção, implementar extração de frames com ffmpeg
 
@@ -1104,16 +1305,26 @@ router.post("/verify-weight-video", authenticate, async (req, res) => {
         throw new Error("Vídeo não acessível");
       }
     } catch (err) {
-      console.error("❌ [AI Verify Weight Video] Erro ao verificar vídeo:", err);
-      return res.status(400).json({ 
+      console.error(
+        "❌ [AI Verify Weight Video] Erro ao verificar vídeo:",
+        err,
+      );
+      return res.status(400).json({
         error: "Erro ao processar vídeo",
         verified: false,
-        reason: "Não foi possível acessar o vídeo para análise"
+        reason: "Não foi possível acessar o vídeo para análise",
       });
     }
 
     // Extrair um frame do vídeo e enviar para a Vision API (a IA analisa imagens, não vídeo direto)
-    let json: { verified?: boolean; reason?: string; isScale?: boolean; weightVisible?: boolean; detectedWeight?: number | null; confidence?: number } = {
+    let json: {
+      verified?: boolean;
+      reason?: string;
+      isScale?: boolean;
+      weightVisible?: boolean;
+      detectedWeight?: number | null;
+      confidence?: number;
+    } = {
       verified: false,
       reason: "Não foi possível analisar o vídeo.",
       isScale: false,
@@ -1123,7 +1334,10 @@ router.post("/verify-weight-video", authenticate, async (req, res) => {
     };
 
     const tempDir = os.tmpdir();
-    const framePath = path.join(tempDir, `frame_${messageId || Date.now()}.jpg`);
+    const framePath = path.join(
+      tempDir,
+      `frame_${messageId || Date.now()}.jpg`,
+    );
 
     try {
       const { path: ffmpegPath } = await import("@ffmpeg-installer/ffmpeg");
@@ -1162,8 +1376,14 @@ Regras:
           {
             role: "user",
             content: [
-              { type: "image_url", image_url: { url: `data:image/jpeg;base64,${frameBase64}` } },
-              { type: "text", text: "Esta imagem é um frame de um vídeo de pesagem. A balança e o peso estão visíveis?" },
+              {
+                type: "image_url",
+                image_url: { url: `data:image/jpeg;base64,${frameBase64}` },
+              },
+              {
+                type: "text",
+                text: "Esta imagem é um frame de um vídeo de pesagem. A balança e o peso estão visíveis?",
+              },
             ],
           },
         ],
@@ -1172,7 +1392,11 @@ Regras:
 
       const aiText = result.choices[0]?.message?.content;
       if (aiText) {
-        let clean = aiText.trim().replace(/```json/gi, "").replace(/```/g, "").replace(/`/g, "");
+        let clean = aiText
+          .trim()
+          .replace(/```json/gi, "")
+          .replace(/```/g, "")
+          .replace(/`/g, "");
         const firstBrace = clean.indexOf("{");
         const lastBrace = clean.lastIndexOf("}");
         if (firstBrace !== -1 && lastBrace !== -1) {
@@ -1182,9 +1406,13 @@ Regras:
       }
       console.log("⚖️ [AI Verify Weight Video] Resposta da IA:", json);
     } catch (extractErr: any) {
-      console.error("❌ [AI Verify Weight Video] Erro ao extrair frame ou analisar:", extractErr);
+      console.error(
+        "❌ [AI Verify Weight Video] Erro ao extrair frame ou analisar:",
+        extractErr,
+      );
       await fs.unlink(framePath).catch(() => {});
-      json.reason = "Não foi possível analisar o vídeo. Certifique-se de que a balança e o peso aparecem com clareza. Se o erro persistir, instale ffmpeg no servidor (npm install @ffmpeg-installer/ffmpeg).";
+      json.reason =
+        "Não foi possível analisar o vídeo. Certifique-se de que a balança e o peso aparecem com clareza.";
     }
 
     const finalVerified = Boolean(json.verified);
@@ -1199,15 +1427,24 @@ Regras:
                verificationReason = ?
            WHERE id = ?`,
           finalVerified ? "verified" : "rejected",
-          json.reason || (finalVerified ? "Vídeo de pesagem verificado com sucesso" : "Vídeo não atende aos critérios de verificação"),
-          messageId
+          json.reason ||
+            (finalVerified
+              ? "Vídeo de pesagem verificado com sucesso"
+              : "Vídeo não atende aos critérios de verificação"),
+          messageId,
         );
 
         // Se verificado, adicionar pontos; atualizar peso do usuário apenas se detectado
         if (finalVerified) {
           try {
-            const weight = json.detectedWeight != null ? Number(json.detectedWeight) : null;
-            if (weight != null && !isNaN(weight) && weight > 0 && weight < 500) {
+            const weight =
+              json.detectedWeight != null ? Number(json.detectedWeight) : null;
+            if (
+              weight != null &&
+              !isNaN(weight) &&
+              weight > 0 &&
+              weight < 500
+            ) {
               await prisma.user.update({
                 where: { id: userId },
                 data: { peso: weight },
@@ -1220,15 +1457,21 @@ Regras:
                      progress = LEAST(COALESCE(progress, 0) + 2, 100)
                  WHERE userId = ? AND challengeId = ?`,
                 userId,
-                challengeId
+                challengeId,
               );
             }
           } catch (pointsErr) {
-            console.error("⚠️ [AI Verify Weight Video] Erro ao adicionar pontos:", pointsErr);
+            console.error(
+              "⚠️ [AI Verify Weight Video] Erro ao adicionar pontos:",
+              pointsErr,
+            );
           }
         }
       } catch (err) {
-        console.error("⚠️ [AI Verify Weight Video] Erro ao atualizar status no banco:", err);
+        console.error(
+          "⚠️ [AI Verify Weight Video] Erro ao atualizar status no banco:",
+          err,
+        );
       }
     }
 
@@ -1241,17 +1484,16 @@ Regras:
       confidence: json.confidence || 0,
       reason: json.reason || "Verificação concluída",
     });
-
   } catch (err: any) {
     console.error("❌ [AI Verify Weight Video] Erro:", err);
-    
+
     // EXIBE MENSAGEM DE ERRO NA TELA PARA O USUÁRIO
     if (req.body && req.body.messageId) {
       try {
         const prisma = (await import("../config/database")).default;
         await prisma.$executeRawUnsafe(
           `UPDATE challenge_chat SET verificationStatus = 'rejected', verificationReason = '🚨 Erro na verificação: O serviço de inteligência artificial encontrou uma falha no vídeo. Verifique se o formato está correto ou se há problema no servidor.' WHERE id = ?`,
-          req.body.messageId
+          req.body.messageId,
         );
       } catch (dbErr) {}
     }

@@ -1,7 +1,9 @@
 import prisma from "../config/database";
+import { randomUUID } from "crypto";
 
-function computeChallengeStatus(c: { startDate: Date, endDate: Date, startTime?: string | null, endTime?: string | null, status?: string | null }): "upcoming" | "active" | "completed" {
-  if (c.status === "completed") return "completed";
+function computeChallengeStatus(c: { startDate: Date, endDate: Date, startTime?: string | null, endTime?: string | null, status?: string | null }): "draft" | "active" | "finished" | "cancelled" {
+  if (c.status === "cancelled") return "cancelled";
+  if (c.status === "completed") return "finished";
   const now = new Date();
   
   const start = new Date(c.startDate);
@@ -26,12 +28,67 @@ function computeChallengeStatus(c: { startDate: Date, endDate: Date, startTime?:
     end.setHours(23, 59, 59, 999);
   }
 
-  if (now < start) return "upcoming";
-  if (now > end) return "completed";
+  if (now < start) return "draft";
+  if (now > end) return "finished";
   return "active";
 }
 
 export class ChallengesService {
+  static async getChallengeAccessState(challengeId: string) {
+    const challenge = await prisma.challenge.findUnique({
+      where: { id: challengeId },
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        createdById: true,
+        startDate: true,
+        endDate: true,
+      },
+    });
+
+    if (!challenge) {
+      return { exists: false as const, challenge: null };
+    }
+
+    return {
+      exists: true as const,
+      challenge,
+      isCancelled: challenge.status === "cancelled",
+      isCompleted: challenge.status === "completed",
+    };
+  }
+
+  static async getChallengeMembership(challengeId: string, userId: string) {
+    const challenge = await prisma.challenge.findUnique({
+      where: { id: challengeId },
+      select: {
+        id: true,
+        createdById: true,
+        status: true,
+        participants: {
+          where: { userId },
+          select: { userId: true },
+        },
+      },
+    });
+
+    if (!challenge) {
+      return { exists: false as const };
+    }
+
+    const isCreator = challenge.createdById === userId;
+    const isParticipant = isCreator || challenge.participants.length > 0;
+
+    return {
+      exists: true as const,
+      challenge,
+      isCreator,
+      isParticipant,
+      isCancelled: challenge.status === "cancelled",
+      isCompleted: challenge.status === "completed",
+    };
+  }
 
   // ================================
   // 1 — MEUS DESAFIOS
@@ -82,6 +139,7 @@ export class ChallengesService {
         description: r.challenge.description,
         type: r.challenge.category,
         status: computed_status,
+        participantsCount: countMap.get(r.challenge.id) || 0,
         start_date: r.challenge.startDate,
         end_date: r.challenge.endDate,
         start_time: r.challenge.startTime,
@@ -90,7 +148,23 @@ export class ChallengesService {
         progress: r.progress,
         cover_url: r.challenge.coverUrl || null,
         entry_price_cents: r.challenge.entryPriceCents,
+        created_by_id: r.challenge.createdById,
+        creator_id: r.challenge.createdById,
+        createdById: r.challenge.createdById,
+        creatorId: r.challenge.createdById,
+        createdBy: { id: r.challenge.createdById },
+        creator: { id: r.challenge.createdById },
+        isCreator: r.challenge.createdById === userId,
+        management: {
+          canManage: r.challenge.createdById === userId,
+          canEdit: r.challenge.createdById === userId,
+          canDelete: r.challenge.createdById === userId,
+          canCancel: r.challenge.createdById === userId,
+          supportsParticipantCancellation: true,
+        },
         is_creator: r.challenge.createdById === userId,
+        can_manage: r.challenge.createdById === userId,
+        canManage: r.challenge.createdById === userId,
         is_participant: true,
         is_private: r.challenge.isPublic === false,
       };
@@ -115,10 +189,12 @@ export class ChallengesService {
         status: true,
         coverUrl: true,
         entryPriceCents: true,
+        createdById: true,
         isPublic: true,
         participants: {
           select: {
             id: true,
+            userId: true,
           },
         },
       },
@@ -143,6 +219,7 @@ export class ChallengesService {
         description: c.description,
         type: c.category,
         status: computed_status,
+        participantsCount: countMap.get(c.id) || c.participants.length || 0,
         start_date: c.startDate,
         end_date: c.endDate,
         start_time: c.startTime,
@@ -150,8 +227,24 @@ export class ChallengesService {
         participants_count: countMap.get(c.id) || c.participants.length || 0,
         cover_url: c.coverUrl,
         entry_price_cents: c.entryPriceCents,
+        created_by_id: c.createdById,
+        creator_id: c.createdById,
+        createdById: c.createdById,
+        creatorId: c.createdById,
+        createdBy: { id: c.createdById },
+        creator: { id: c.createdById },
+        isCreator: true,
+        management: {
+          canManage: true,
+          canEdit: true,
+          canDelete: true,
+          canCancel: true,
+          supportsParticipantCancellation: true,
+        },
         is_creator: true,
-        is_participant: true,
+        can_manage: true,
+        canManage: true,
+        is_participant: c.participants.some((participant) => participant.userId === userId),
         is_private: c.isPublic === false,
       };
     });
@@ -207,6 +300,7 @@ export class ChallengesService {
         description: challenge.description,
         type: challenge.category,
         status: computed_status,
+        participantsCount: participants_count,
         start_date: challenge.startDate,
         end_date: challenge.endDate,
         entry_price_cents: challenge.entryPriceCents,
@@ -216,9 +310,30 @@ export class ChallengesService {
         participants_count,
         rules: null,
         computed_status,
+        created_by_id: challenge.createdById,
+        creator_id: challenge.createdById,
+        createdById: challenge.createdById,
+        creatorId: challenge.createdById,
+        createdBy: {
+          id: challenge.createdById,
+          name: challenge.createdBy.name,
+        },
+        creator: {
+          id: challenge.createdById,
+          name: challenge.createdBy.name,
+        },
+        isCreator: is_creator,
+        management: {
+          canManage: is_creator,
+          canEdit: is_creator,
+          canDelete: is_creator,
+          canCancel: is_creator,
+          supportsParticipantCancellation: true,
+        },
         is_creator,
+        can_manage: is_creator,
+        canManage: is_creator,
         is_participant: isParticipant,
-        createdBy: challenge.createdBy,
         is_private: challenge.isPublic === false,
       },
       posts: [],
@@ -249,6 +364,7 @@ export class ChallengesService {
         coverUrl: true,
         entryPriceCents: true,
         created_at: true,
+        createdById: true,
         isPublic: true,
         participants: {
           select: {
@@ -276,8 +392,26 @@ export class ChallengesService {
         entry_price_cents: c.entryPriceCents,
         status: computed_status,
         created_at: c.created_at,
+        participantsCount: c.participants?.length || 0,
+        created_by_id: c.createdById,
+        creator_id: c.createdById,
+        createdById: c.createdById,
+        creatorId: c.createdById,
+        createdBy: { id: c.createdById },
+        creator: { id: c.createdById },
         participants_count: c.participants?.length || 0,
         is_participant: userId ? (c.participants?.some(p => p.userId === userId) || false) : false,
+        isCreator: userId ? (c.createdById === userId) : false,
+        management: {
+          canManage: userId ? (c.createdById === userId) : false,
+          canEdit: userId ? (c.createdById === userId) : false,
+          canDelete: userId ? (c.createdById === userId) : false,
+          canCancel: userId ? (c.createdById === userId) : false,
+          supportsParticipantCancellation: true,
+        },
+        is_creator: userId ? (c.createdById === userId) : false,
+        can_manage: userId ? (c.createdById === userId) : false,
+        canManage: userId ? (c.createdById === userId) : false,
         is_private: c.isPublic === false,
       };
     });
@@ -390,24 +524,197 @@ export class ChallengesService {
     return challenge;
   }
 
+  static async updateChallenge(challengeId: string, userId: string, data: any) {
+    const challenge = await prisma.challenge.findFirst({
+      where: { id: challengeId, createdById: userId },
+    });
+
+    if (!challenge) {
+      return { ok: false as const, reason: "not_found_or_forbidden" as const };
+    }
+
+    if (challenge.status === "cancelled") {
+      return { ok: false as const, reason: "already_cancelled" as const };
+    }
+
+    if (challenge.status === "completed") {
+      return { ok: false as const, reason: "already_completed" as const };
+    }
+
+    const updateData: any = {};
+    const directFields = [
+      "title",
+      "description",
+      "category",
+      "location",
+      "coverUrl",
+      "reward",
+      "entryPriceCents",
+      "firstPlacePrizeCents",
+      "secondPlacePrizeCents",
+      "thirdPlacePrizeCents",
+      "minAge",
+      "minWeight",
+      "maxWeight",
+      "requiredActivityLevel",
+      "isPublic",
+      "frequency",
+      "mode",
+      "prizeDistributionType",
+      "latitude",
+      "longitude",
+      "maxParticipants",
+    ];
+
+    for (const field of directFields) {
+      if (data[field] !== undefined) {
+        updateData[field] = data[field];
+      }
+    }
+
+    if (data.startDate !== undefined) {
+      updateData.startDate = new Date(data.startDate);
+    }
+
+    if (data.endDate !== undefined) {
+      updateData.endDate = new Date(data.endDate);
+    }
+
+    if (data.startTime !== undefined) {
+      updateData.startTime = data.startTime || null;
+    }
+
+    if (data.endTime !== undefined) {
+      updateData.endTime = data.endTime || null;
+    }
+
+    if (updateData.startTime && !/^([0-1][0-9]|2[0-3]):([0-5][0-9])$/.test(updateData.startTime)) {
+      return { ok: false as const, reason: "invalid_start_time" as const };
+    }
+
+    if (updateData.endTime && !/^([0-1][0-9]|2[0-3]):([0-5][0-9])$/.test(updateData.endTime)) {
+      return { ok: false as const, reason: "invalid_end_time" as const };
+    }
+
+    const nextStartTime = updateData.startTime !== undefined ? updateData.startTime : challenge.startTime;
+    const nextEndTime = updateData.endTime !== undefined ? updateData.endTime : challenge.endTime;
+
+    if ((nextStartTime && !nextEndTime) || (!nextStartTime && nextEndTime)) {
+      return { ok: false as const, reason: "incomplete_time_window" as const };
+    }
+
+    if (nextStartTime && nextEndTime) {
+      const [startHour, startMinute] = nextStartTime.split(":").map(Number);
+      const [endHour, endMinute] = nextEndTime.split(":").map(Number);
+      const startMinutes = startHour * 60 + startMinute;
+      const endMinutes = endHour * 60 + endMinute;
+
+      if (endMinutes <= startMinutes) {
+        return { ok: false as const, reason: "invalid_time_window" as const };
+      }
+    }
+
+    const updatedChallenge = await prisma.challenge.update({
+      where: { id: challengeId },
+      data: updateData,
+    });
+
+    return { ok: true as const, challenge: updatedChallenge };
+  }
+
   // --------------------------------
   // DELETAR DESAFIO (cancelar)
   // Só pode cancelar ANTES de qualquer participante entrar.
   // --------------------------------
   static async deleteChallenge(challengeId: string, userId: string) {
-    const challenge = await prisma.challenge.findUnique({
+    const challenge = await prisma.challenge.findFirst({
       where: { id: challengeId, createdById: userId },
-      include: { participants: { select: { id: true } } },
+      include: { participants: { select: { id: true, userId: true } } },
     });
 
     if (!challenge) return { ok: false, reason: "not_found" as const };
 
+    const hasOtherParticipants = challenge.participants.some(
+      (participant) => participant.userId !== userId
+    );
+
+    if (hasOtherParticipants) {
+      const cancelled = await this.cancelChallenge(challengeId, userId);
+      if (!cancelled.ok) {
+        return cancelled;
+      }
+
+      return {
+        ok: true as const,
+        mode: "cancelled" as const,
+        participantCount: cancelled.participantCount,
+      };
+    }
+
     if (challenge.participants.length > 0) {
-      return { ok: false, reason: "has_participants" as const };
+      await prisma.challengeParticipant.deleteMany({
+        where: { challengeId: challenge.id },
+      });
     }
 
     await prisma.challenge.delete({ where: { id: challenge.id } });
-    return { ok: true };
+    return { ok: true as const, mode: "deleted" as const };
+  }
+
+  static async cancelChallenge(challengeId: string, userId: string) {
+    const challenge = await prisma.challenge.findUnique({
+      where: { id: challengeId },
+      select: {
+        id: true,
+        title: true,
+        createdById: true,
+        status: true,
+        participants: {
+          select: {
+            userId: true,
+          },
+        },
+      },
+    });
+
+    if (!challenge) return { ok: false as const, reason: "not_found" as const };
+    if (challenge.createdById !== userId) return { ok: false as const, reason: "forbidden" as const };
+    if (challenge.status === "cancelled") return { ok: false as const, reason: "already_cancelled" as const };
+    if (challenge.status === "completed") return { ok: false as const, reason: "already_completed" as const };
+
+    const participantIds = Array.from(
+      new Set(
+        challenge.participants
+          .map((participant) => participant.userId)
+          .filter((participantId) => participantId !== userId)
+      )
+    );
+
+    await prisma.$transaction(async (tx) => {
+      await tx.challenge.update({
+        where: { id: challenge.id },
+        data: { status: "cancelled" },
+      });
+
+      if (participantIds.length > 0) {
+        await tx.notification.createMany({
+          data: participantIds.map((participantId) => ({
+            id: randomUUID(),
+            userId: participantId,
+            challengeId: challenge.id,
+            title: "Desafio cancelado",
+            body: `O desafio "${challenge.title}" foi cancelado pelo criador.`,
+            type: "challenge_cancelled",
+          })),
+        });
+      }
+    });
+
+    return {
+      ok: true as const,
+      challengeId: challenge.id,
+      participantCount: participantIds.length,
+    };
   }
 
   // --------------------------------
@@ -421,6 +728,24 @@ export class ChallengesService {
 
     if (!challenge) {
       throw new Error("Desafio não encontrado");
+    }
+
+    if (challenge.status === "cancelled") {
+      return {
+        requiresPayment: false,
+        already: false,
+        challengeCancelled: true,
+        message: "Este desafio foi cancelado e nÃ£o aceita novas entradas.",
+      };
+    }
+
+    if (challenge.status === "completed") {
+      return {
+        requiresPayment: false,
+        already: false,
+        challengeEnded: true,
+        message: "Este desafio jÃ¡ foi concluÃ­do e nÃ£o aceita mais participantes.",
+      };
     }
 
     const now = new Date();

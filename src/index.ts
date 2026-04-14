@@ -53,10 +53,7 @@ let allowedOrigins = env.ALLOWED_ORIGINS.split(",").map((origin) => origin.trim(
 const defaultOrigins = [
   "http://localhost:8080",
   "http://localhost:3000",
-  "http://localhost:3005",
   "http://192.168.1.9:8080",
-  "http://192.168.1.9:3005",
-  "http://192.168.1.9:3005",
   "http://localhost:19006", // Expo web
 ];
 
@@ -124,7 +121,7 @@ app.get("/", (_req, res) => {
     timestamp: new Date().toISOString(),
     port: PORT,
     environment: env.NODE_ENV,
-    apiUrl: `http://192.168.1.9:${PORT}/api`,
+    apiUrl: `http://localhost:${PORT}/api`,
     endpoints: {
       health: "/api/health",
       wallet: "/api/wallet",
@@ -143,7 +140,12 @@ app.get("/api/health", (_req, res) => {
     timestamp: new Date().toISOString(),
     port: PORT,
     environment: env.NODE_ENV,
-    apiUrl: `http://192.168.1.6:${PORT}/api`
+    apiUrl: `http://192.168.1.6:${PORT}/api`,
+    features: {
+      challengeCancellation: true,
+      participantChallengeCancellation: true,
+      challengeManagement: true,
+    }
   });
 });
 
@@ -173,6 +175,11 @@ app.get("/api/server-info", (_req, res) => {
       ip: recommendedIP,
       url: `http://${recommendedIP}:${PORT}/api`
     } : null,
+    features: {
+      challengeCancellation: true,
+      participantChallengeCancellation: true,
+      challengeManagement: true,
+    },
     timestamp: new Date().toISOString()
   });
 });

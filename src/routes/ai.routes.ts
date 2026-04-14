@@ -1283,12 +1283,7 @@ router.post("/verify-weight-video", authenticate, async (req, res) => {
     const prisma = (await import("../config/database")).default;
 
     // Buscar peso atual do usuário
-    const userData = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { peso: true, name: true },
-    });
 
-    const currentWeight = userData?.peso || null;
 
     // NOTA: Para análise completa de vídeo com IA, seria necessário:
     // 1. Extrair frames do vídeo usando ffmpeg ou similar

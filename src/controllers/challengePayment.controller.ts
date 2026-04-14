@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import prisma from "../config/database";
 import { MercadoPagoConfig, Payment, CardToken } from "mercadopago";
+import { ChallengesService } from "../services/challenges.service";
 
 // ======================================================
 // 🔑 CONFIG MERCADO PAGO - APENAS PRODUÇÃO
@@ -64,6 +65,20 @@ export class ChallengePaymentController {
         return res
           .status(404)
           .json({ success: false, message: "Desafio não encontrado" });
+      }
+
+      if (challenge.status === "cancelled") {
+        return res.status(409).json({
+          success: false,
+          message: "Este desafio foi cancelado e nÃ£o aceita novas entradas",
+        });
+      }
+
+      if (challenge.status === "completed") {
+        return res.status(409).json({
+          success: false,
+          message: "Este desafio jÃ¡ foi concluÃ­do e nÃ£o aceita novas entradas",
+        });
       }
 
       const entry = challenge.entryPriceCents ?? 0;
@@ -531,6 +546,28 @@ export class ChallengePaymentController {
       }
 
       // Atualizar transação
+      const challengeState = await ChallengesService.getChallengeAccessState(transaction.challengeId!);
+      if (!challengeState.exists) {
+        return res.status(404).json({
+          success: false,
+          message: "Desafio nÃ£o encontrado",
+        });
+      }
+
+      if (challengeState.isCancelled) {
+        return res.status(409).json({
+          success: false,
+          message: "Este desafio foi cancelado e nÃ£o aceita novas entradas",
+        });
+      }
+
+      if (challengeState.isCompleted) {
+        return res.status(409).json({
+          success: false,
+          message: "Este desafio jÃ¡ foi concluÃ­do e nÃ£o aceita novas entradas",
+        });
+      }
+
       await prisma.transaction.update({
         where: { id: transaction.id },
         data: { status: "approved" },

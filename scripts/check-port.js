@@ -46,7 +46,7 @@ function checkPort(port) {
 function getNetworkIPs() {
   const interfaces = os.networkInterfaces();
   const ips = {
-    localhost: ['192.168.1.9', 'localhost'],
+    localhost: ['localhost'],
     ipv4: [],
     ipv6: [],
   };
@@ -98,20 +98,20 @@ function checkProcessOnPort(port) {
 async function main() {
   log('\n🔍 Verificando configuração de portas e IPs...\n', 'bright');
 
-  // 1. Verificar porta do backend (3005)
-  log('📌 Verificando porta do backend (3005)...', 'cyan');
-  const portInUse = await checkPort(3005);
+  // 1. Verificar porta do backend (3000)
+  log('📌 Verificando porta do backend (3000)...', 'cyan');
+  const portInUse = await checkPort(3000);
   
   if (portInUse) {
-    log('   ✅ Porta 3005 está em uso (backend provavelmente está rodando)', 'green');
+    log('   ✅ Porta 3000 está em uso (backend provavelmente está rodando)', 'green');
     
-    const processInfo = await checkProcessOnPort(3005);
+    const processInfo = await checkProcessOnPort(3000);
     if (processInfo) {
       log('   📋 Informações do processo:', 'yellow');
       console.log(`   ${processInfo.split('\n').join('\n   ')}`);
     }
   } else {
-    log('   ⚠️  Porta 3005 está livre (backend não está rodando)', 'yellow');
+    log('   ⚠️  Porta 3000 está livre (backend não está rodando)', 'yellow');
   }
 
   // 2. Descobrir IPs da máquina
@@ -123,7 +123,7 @@ async function main() {
   if (ips.ipv4.length > 0) {
     ips.ipv4.forEach((ip) => {
       log(`   ✅ ${ip.address} (interface: ${ip.interface})`, 'green');
-      log(`      → Configure no app: http://${ip.address}:3005/api`, 'blue');
+      log(`      → Configure no app: http://${ip.address}:3000/api`, 'blue');
     });
   } else {
     log('   ⚠️  Nenhum IP IPv4 encontrado', 'yellow');
@@ -131,11 +131,11 @@ async function main() {
 
   // 3. Mostrar configuração atual
   log('\n📋 Configuração atual:', 'cyan');
-  log(`   Backend URL: http://192.168.1.9:3005/api`, 'blue');
-  log(`   Backend URL (localhost): http://localhost:3005/api`, 'blue');
+  log(`   Backend URL: http://localhost:3000/api`, 'blue');
+  log(`   Backend URL (localhost): http://localhost:3000/api`, 'blue');
   
   if (ips.ipv4.length > 0) {
-    log(`   Backend URL (dispositivo físico): http://${ips.ipv4[0].address}:3005/api`, 'blue');
+    log(`   Backend URL (dispositivo físico): http://${ips.ipv4[0].address}:3000/api`, 'blue');
   }
 
   // 4. Verificar arquivo .env
@@ -153,11 +153,11 @@ async function main() {
         const envPort = portMatch[1];
         log(`   ✅ Arquivo .env encontrado - PORT=${envPort}`, 'green');
         
-        if (envPort !== '3005') {
-          log(`   ⚠️  Aviso: Porta no .env (${envPort}) é diferente de 3005`, 'yellow');
+        if (envPort !== '3000') {
+          log(`   ⚠️  Aviso: Porta no .env (${envPort}) é diferente de 3000`, 'yellow');
         }
       } else {
-        log('   ⚠️  PORT não encontrado no .env (usando padrão: 3005)', 'yellow');
+        log('   ⚠️  PORT não encontrado no .env (usando padrão: 3000)', 'yellow');
       }
     } else {
       log('   ⚠️  Arquivo .env não encontrado', 'yellow');
@@ -170,12 +170,12 @@ async function main() {
   log('\n📱 Para usar no celular físico:', 'bright');
   log('   1. Certifique-se de que o celular e computador estão na mesma rede Wi-Fi', 'yellow');
   if (ips.ipv4.length > 0) {
-    log(`   2. Configure no app: http://${ips.ipv4[0].address}:3005/api`, 'yellow');
+    log(`   2. Configure no app: http://${ips.ipv4[0].address}:3000/api`, 'yellow');
   } else {
     log('   2. Descubra o IP da sua máquina manualmente (ipconfig/ifconfig)', 'yellow');
   }
   log('   3. Certifique-se de que o backend está rodando', 'yellow');
-  log('   4. Verifique se o firewall não está bloqueando a porta 3005', 'yellow');
+  log('   4. Verifique se o firewall não está bloqueando a porta 3000', 'yellow');
 
   log('\n✅ Verificação concluída!\n', 'green');
 }

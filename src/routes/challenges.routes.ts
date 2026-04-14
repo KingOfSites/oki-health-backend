@@ -68,6 +68,12 @@ challengeRoutes.post(
   ChallengesController.joinChallenge
 );
 
+challengeRoutes.post(
+  "/:id/cancel",
+  authenticate,
+  ChallengesController.cancelChallenge
+);
+
 /* ============================================================
 🔥 6 — CRIAR DESAFIO
 ============================================================ */
@@ -75,6 +81,18 @@ challengeRoutes.post(
   "/",
   authenticate,
   ChallengesController.createChallenge
+);
+
+challengeRoutes.put(
+  "/:id",
+  authenticate,
+  ChallengesController.updateChallenge
+);
+
+challengeRoutes.patch(
+  "/:id",
+  authenticate,
+  ChallengesController.updateChallenge
 );
 
 /* ============================================================

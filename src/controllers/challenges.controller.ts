@@ -457,6 +457,14 @@ static async searchChallenges(req: AuthRequest, res: Response, next: NextFunctio
       }
 
       // 🟨 Já participa
+      if ((result as any).challengeCancelled) {
+        return res.status(409).json({
+          success: false,
+          challengeCancelled: true,
+          message: (result as any).message || "Este desafio foi cancelado e nÃ£o aceita novas entradas.",
+        });
+      }
+
       if (result.already) {
         return res.json({
           success: true,
@@ -542,6 +550,22 @@ static async searchChallenges(req: AuthRequest, res: Response, next: NextFunctio
       const result = await ChallengesService.deleteChallenge(challengeId, req.userId);
 
       if (result && typeof result === "object" && "ok" in result && !result.ok) {
+        if ((result as any).reason === "already_completed") {
+          return res.status(409).json({
+            success: false,
+            message: "Este desafio jÃ¡ foi concluÃ­do e nÃ£o pode ser cancelado",
+          });
+        }
+
+        if ((result as any).reason === "already_cancelled") {
+          return res.status(409).json({
+            success: false,
+            message: "Este desafio jÃ¡ foi cancelado",
+          });
+        }
+      }
+
+      if (result && typeof result === "object" && "ok" in result && !result.ok) {
         if ((result as any).reason === "has_participants") {
           return res.status(400).json({
             success: false,
@@ -560,8 +584,152 @@ static async searchChallenges(req: AuthRequest, res: Response, next: NextFunctio
         });
       }
 
-      return res.json({ success: true, message: "Desafio cancelado com sucesso" });
+      return res.json({
+        success: true,
+        message:
+          (result as any).mode === "deleted"
+            ? "Desafio excluÃ­do com sucesso"
+            : "Desafio cancelado com sucesso",
+        data:
+          (result as any).mode === "cancelled"
+            ? {
+                status: "cancelled",
+                notifiedParticipants: (result as any).participantCount ?? 0,
+              }
+            : {
+                status: "deleted",
+              },
+      });
 
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  static async cancelChallenge(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      if (!req.userId) {
+        return res.status(401).json({ success: false, message: "NÃ£o autenticado" });
+      }
+
+      const challengeId = req.params.id;
+      if (!challengeId) {
+        return res.status(400).json({ success: false, message: "ID do desafio nÃ£o fornecido" });
+      }
+
+      const result = await ChallengesService.cancelChallenge(challengeId, req.userId);
+
+      if (!result.ok) {
+        if (result.reason === "not_found") {
+          return res.status(404).json({ success: false, message: "Desafio nÃ£o encontrado" });
+        }
+
+        if (result.reason === "forbidden") {
+          return res.status(403).json({
+            success: false,
+            message: "Apenas o criador do desafio pode cancelar este desafio",
+          });
+        }
+
+        if (result.reason === "already_cancelled") {
+          return res.status(409).json({
+            success: false,
+            message: "Este desafio jÃ¡ foi cancelado",
+          });
+        }
+
+        if (result.reason === "already_completed") {
+          return res.status(409).json({
+            success: false,
+            message: "Este desafio jÃ¡ foi concluÃ­do e nÃ£o pode ser cancelado",
+          });
+        }
+      }
+
+      return res.json({
+        success: true,
+        message: "Desafio cancelado com sucesso",
+        data: {
+          challengeId: result.challengeId,
+          notifiedParticipants: result.participantCount,
+          status: "cancelled",
+          supportsParticipantCancellation: true,
+        },
+      });
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  static async updateChallenge(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      if (!req.userId) {
+        return res.status(401).json({ success: false, message: "NÃ£o autenticado" });
+      }
+
+      const challengeId = req.params.id;
+      if (!challengeId) {
+        return res.status(400).json({ success: false, message: "ID do desafio invÃ¡lido" });
+      }
+
+      const result = await ChallengesService.updateChallenge(challengeId, req.userId, req.body);
+
+      if (!result.ok) {
+        if (result.reason === "not_found_or_forbidden") {
+          return res.status(403).json({
+            success: false,
+            message: "Apenas o criador do desafio pode editar este desafio",
+          });
+        }
+
+        if (result.reason === "already_cancelled") {
+          return res.status(409).json({
+            success: false,
+            message: "Este desafio jÃ¡ foi cancelado e nÃ£o pode ser editado",
+          });
+        }
+
+        if (result.reason === "already_completed") {
+          return res.status(409).json({
+            success: false,
+            message: "Este desafio jÃ¡ foi concluÃ­do e nÃ£o pode ser editado",
+          });
+        }
+
+        if (result.reason === "invalid_start_time") {
+          return res.status(400).json({
+            success: false,
+            message: "Formato de horÃ¡rio inicial invÃ¡lido. Use HH:MM",
+          });
+        }
+
+        if (result.reason === "invalid_end_time") {
+          return res.status(400).json({
+            success: false,
+            message: "Formato de horÃ¡rio final invÃ¡lido. Use HH:MM",
+          });
+        }
+
+        if (result.reason === "incomplete_time_window") {
+          return res.status(400).json({
+            success: false,
+            message: "Se fornecer horÃ¡rios, envie horÃ¡rio inicial e final",
+          });
+        }
+
+        if (result.reason === "invalid_time_window") {
+          return res.status(400).json({
+            success: false,
+            message: "O horÃ¡rio final deve ser posterior ao horÃ¡rio inicial",
+          });
+        }
+      }
+
+      return res.json({
+        success: true,
+        message: "Desafio atualizado com sucesso",
+        data: result.challenge,
+      });
     } catch (error) {
       return next(error);
     }

@@ -35,8 +35,8 @@ export interface AuthResponse {
     id: string;
     email: string;
     name: string;
-    age: number;
-    city: string;
+    age: number | null;
+    city: string | null;
 
     sexo: "M" | "F" | null;
     peso: number | null;

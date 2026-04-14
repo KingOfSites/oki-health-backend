@@ -90,7 +90,7 @@ export class ChallengeRankingController {
       } else {
         end.setHours(23, 59, 59, 999);
       }
-      const isFinished = challenge.status === "completed" || end < now;
+      const isFinished = challenge.status === "completed" || challenge.status === "cancelled" || end < now;
 
       return res.json({
         success: true,
@@ -146,6 +146,13 @@ export class ChallengeRankingController {
       }
 
       // Verificar se o usuário é o criador do desafio
+      if (challenge.status === "cancelled") {
+        return res.status(409).json({
+          success: false,
+          message: "Desafio cancelado nÃ£o pode distribuir prÃªmios",
+        });
+      }
+
       if (challenge.createdById !== userId) {
         return res.status(403).json({
           success: false,
@@ -280,7 +287,6 @@ export class ChallengeRankingController {
           positionIndex++;
         }
       }
-      const creatorIsParticipant = winnerIds.has(challenge.createdById) || allParticipants.some((p: any) => p.userId === challenge.createdById);
       if (totalPrizeCents > 0) {
         const creator = await prisma.user.findUnique({
           where: { id: challenge.createdById },

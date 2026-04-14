@@ -126,7 +126,7 @@ export class SettingsService {
     const { PasswordUtils } = await import("../utils/password");
     const isPasswordValid = await PasswordUtils.compare(
       currentPassword,
-      user.password
+      user.password || ""
     );
 
     if (!isPasswordValid) {

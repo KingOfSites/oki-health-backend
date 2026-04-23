@@ -52,6 +52,9 @@ model User {
   referrals          User[]                 @relation("UserReferrals")
   weightEntries      WeightEntry[]
   withdrawalRequests WithdrawalRequest[]
+  privateConversationsA PrivateConversation[] @relation("PrivateConversationUserA")
+  privateConversationsB PrivateConversation[] @relation("PrivateConversationUserB")
+  privateMessages      PrivateMessage[]
 
   @@index([referredBy], map: "users_referredBy_fkey")
   @@map("users")
@@ -94,9 +97,48 @@ model Challenge {
   createdBy             User                   @relation(fields: [createdById], references: [id])
   notificationRecords   Notification[]
   transactions          Transaction[]
+  privateConversations  PrivateConversation[]
 
   @@index([createdById], map: "challenges_createdById_fkey")
   @@map("challenges")
+}
+
+model PrivateConversation {
+  id           String          @id @default(uuid())
+  challengeId  String
+  userAId      String
+  userBId      String
+  created_at   DateTime        @default(now())
+  updated_at   DateTime        @updatedAt
+  lastMessageAt DateTime?
+
+  challenge    Challenge       @relation(fields: [challengeId], references: [id])
+  userA        User            @relation("PrivateConversationUserA", fields: [userAId], references: [id])
+  userB        User            @relation("PrivateConversationUserB", fields: [userBId], references: [id])
+  messages     PrivateMessage[]
+
+  @@index([challengeId])
+  @@index([userAId])
+  @@index([userBId])
+  @@unique([challengeId, userAId, userBId], map: "uniq_private_conversation_pair")
+  @@map("private_conversations")
+}
+
+model PrivateMessage {
+  id              String              @id @default(uuid())
+  conversationId  String
+  senderId        String
+  message         String              @db.Text
+  created_at      DateTime            @default(now())
+  readAt          DateTime?
+
+  conversation    PrivateConversation @relation(fields: [conversationId], references: [id])
+  sender          User                @relation(fields: [senderId], references: [id])
+
+  @@index([conversationId])
+  @@index([senderId])
+  @@index([created_at])
+  @@map("private_messages")
 }
 
 model ChallengeParticipant {

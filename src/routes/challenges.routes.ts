@@ -3,6 +3,7 @@ import { authenticate, optionalAuthenticate } from "../middleware/auth";
 import { ChallengesController } from "../controllers/challenges.controller";
 import { ChallengeChatController } from "../controllers/challengeChat.controller";
 import { ChallengeRankingController } from "../controllers/challengeRanking.controller";
+import { PrivateChatController } from "../controllers/privateChat.controller";
 
 const challengeRoutes = Router();
 
@@ -18,6 +19,30 @@ challengeRoutes.post(
   "/:challengeId/chat",
   authenticate,
   ChallengeChatController.sendMessage
+);
+
+/* ============================================================
+🔥 0.1 — CHAT PRIVADO 1:1 (entre participantes)
+============================================================ */
+challengeRoutes.get(
+  "/:challengeId/private-conversations",
+  authenticate,
+  PrivateChatController.listConversations,
+);
+challengeRoutes.post(
+  "/:challengeId/private-conversations",
+  authenticate,
+  PrivateChatController.getOrCreateConversation,
+);
+challengeRoutes.get(
+  "/private-conversations/:conversationId/messages",
+  authenticate,
+  PrivateChatController.getMessages,
+);
+challengeRoutes.post(
+  "/private-conversations/:conversationId/messages",
+  authenticate,
+  PrivateChatController.sendMessage,
 );
 
 /* ============================================================

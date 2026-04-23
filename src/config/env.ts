@@ -14,7 +14,7 @@ const envSchema = z.object({
   JWT_EXPIRES_IN: z.string().default("7d"),
 
   ALLOWED_ORIGINS: z.string().default("http://localhost:8080"),
-  BACKEND_URL: z.string().default("http://localhost:3000"),
+  BACKEND_URL: z.string().default("https://okibackend.solidtech.digital"),
   FRONTEND_URL: z.string().default("http://localhost:8080"),
   MERCADOPAGO_ACCESS_TOKEN: z.string().optional(),
 

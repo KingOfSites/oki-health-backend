@@ -131,8 +131,8 @@ async function main() {
 
   // 3. Mostrar configuração atual
   log('\n📋 Configuração atual:', 'cyan');
-  log(`   Backend URL: http://localhost:3000/api`, 'blue');
-  log(`   Backend URL (localhost): http://localhost:3000/api`, 'blue');
+  log(`   Backend URL: https://okibackend.solidtech.digital/api`, 'blue');
+  log(`   Backend URL (localhost): http://localhost:3005/api`, 'blue');
   
   if (ips.ipv4.length > 0) {
     log(`   Backend URL (dispositivo físico): http://${ips.ipv4[0].address}:3000/api`, 'blue');

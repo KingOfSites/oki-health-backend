@@ -47,7 +47,7 @@ JWT_SECRET="sua-chave-secreta-super-segura-mude-em-producao"
 JWT_EXPIRES_IN="7d"
 PORT=3002
 NODE_ENV="development"
-ALLOWED_ORIGINS="http://localhost:5173,http://localhost:3000"
+ALLOWED_ORIGINS="http://localhost:5173,http://localhost:3005,https://oki.solidtech.digital,https://app-invite-landing.vercel.app"
 ```
 
 5. Execute as migrations do Prisma:

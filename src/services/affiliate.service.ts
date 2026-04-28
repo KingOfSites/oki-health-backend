@@ -111,8 +111,12 @@ export class AffiliateService {
     return user.affiliateCode;
   }
 
-  // Obter link de afiliado
-  static async getAffiliateLink(userId: string, baseUrl: string = "https://oki.health") {
+  // Obter link de afiliado — mesmo padrão do convite de desafio:
+  // {baseUrl}/convite/{code}, onde a landing page diferencia pelo formato.
+  static async getAffiliateLink(
+    userId: string,
+    baseUrl: string = "https://app-invite-landing.vercel.app",
+  ) {
     const affiliateCode = await this.getOrCreateAffiliateCode(userId);
     return `${baseUrl}/convite/${affiliateCode}`;
   }

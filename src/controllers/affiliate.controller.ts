@@ -62,7 +62,8 @@ export class AffiliateController {
         });
       }
 
-      const baseUrl = process.env.FRONTEND_URL || "https://oki.health";
+      const baseUrl =
+        process.env.FRONTEND_URL || "https://app-invite-landing.vercel.app";
       const link = await AffiliateService.getAffiliateLink(req.userId, baseUrl);
 
       return res.status(200).json({

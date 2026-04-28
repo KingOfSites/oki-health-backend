@@ -194,7 +194,7 @@ export class SubscribeController {
             token: cardToken.id,
             transaction_amount: amount,
             installments: installments || 1,
-            description: description || `Assinatura ${planName}`,
+            description: description || `Assinatura ${plan.name}`,
             payer: {
               email,
               first_name: cardName.split(" ")[0] || cardName,
@@ -293,7 +293,7 @@ export class SubscribeController {
           userId,
           amount: plan.price,
           type: "subscription",
-          description: description || `Assinatura ${planName}`,
+          description: description || `Assinatura ${plan.name}`,
           mpPaymentId: String(mpResponse.id || ""),
           status: mpResponse.status || "pending",
         },
@@ -387,7 +387,7 @@ export class SubscribeController {
             transaction_amount: plan.price,
             payment_method_id: "google_pay",
             installments: 1,
-            description: description || `Assinatura ${planName} via Google Pay`,
+            description: description || `Assinatura ${plan.name} via Google Pay`,
             payer: {
               email,
               identification: { type: "CPF", number: cpfDigits },
@@ -429,7 +429,7 @@ export class SubscribeController {
           userId,
           amount: plan.price,
           type: "subscription",
-          description: description || `Assinatura ${planName} via Google Pay`,
+          description: description || `Assinatura ${plan.name} via Google Pay`,
           mpPaymentId: String(mpResponse.id || ""),
           status: mpResponse.status || "pending",
         },
@@ -482,7 +482,7 @@ export class SubscribeController {
             transaction_amount: plan.price,
             payment_method_id: "apple_pay",
             installments: 1,
-            description: description || `Assinatura ${planName} via Apple Pay`,
+            description: description || `Assinatura ${plan.name} via Apple Pay`,
             payer: {
               email,
               identification: { type: "CPF", number: cpfDigits },
@@ -524,7 +524,7 @@ export class SubscribeController {
           userId,
           amount: plan.price,
           type: "subscription",
-          description: description || `Assinatura ${planName} via Apple Pay`,
+          description: description || `Assinatura ${plan.name} via Apple Pay`,
           mpPaymentId: String(mpResponse.id || ""),
           status: mpResponse.status || "pending",
         },
@@ -590,7 +590,7 @@ export class SubscribeController {
       const mpPix: any = await payment.create({
         body: {
           transaction_amount: plan.price,
-          description: `Assinatura ${planName}`,
+          description: `Assinatura ${plan.name}`,
           payment_method_id: "pix",
           payer: {
             email: user.email,
@@ -624,7 +624,7 @@ export class SubscribeController {
           userId,
           amount: plan.price,
           type: "subscription",
-          description: `Assinatura ${planName} - PIX`,
+          description: `Assinatura ${plan.name} - PIX`,
           mpPaymentId: String(mpPix.id || ""),
           status: mpPix.status || "pending",
         },
@@ -667,10 +667,20 @@ export class SubscribeController {
 
       return res.json(responseData);
     } catch (error: any) {
+      console.error("❌ ============ ERRO PIX ASSINATURA ============");
+      console.error("❌ Mensagem:", error?.message);
+      console.error("❌ Nome do erro:", error?.name);
+      console.error("❌ Status MP:", error?.status);
+      console.error("❌ Stack:", error?.stack);
+      if (error?.cause) console.error("❌ Cause:", JSON.stringify(error.cause, null, 2));
+      if (error?.error) console.error("❌ MP error body:", JSON.stringify(error.error, null, 2));
+      if (error?.response) console.error("❌ MP response:", JSON.stringify(error.response, null, 2));
+      console.error("❌ ==============================================");
       return res.status(500).json({
         success: false,
         message: "Erro ao gerar PIX.",
         details: error.message,
+        mpError: error?.cause ?? error?.error ?? null,
       });
     }
   }

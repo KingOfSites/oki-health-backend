@@ -105,17 +105,6 @@ export class AuthService {
       }
     }
 
-    // Registrar referral se houver código de afiliado
-    if (data.affiliateCode) {
-      try {
-        const { AffiliateService } = await import("./affiliate.service");
-        await AffiliateService.registerReferral(user.id, data.affiliateCode);
-      } catch (error) {
-        // Não falhar o signup se houver erro no referral
-        console.error("Erro ao registrar referral:", error);
-      }
-    }
-
     const token = JWTUtils.generate(user.id);
 
     return {

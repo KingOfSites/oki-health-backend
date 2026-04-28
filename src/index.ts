@@ -13,6 +13,7 @@ import challengePostsRoutes from "./routes/challengePosts.routes";
 import affiliateRoutes from "./routes/affiliate.routes";
 import settingsRoutes from "./routes/settings.routes";
 import { startNotificationEngine } from "./jobs/notificationEngine";
+import { startPrizeDistributionWorker } from "./jobs/prizeDistributionWorker";
 import avatarRoutes from "./routes/avatar.routes";
 import reportsRoutes from "./routes/reports.routes";
 
@@ -303,6 +304,8 @@ const startServer = async () => {
 
     // Inicializa o agendador de notificações nativo
     startNotificationEngine();
+    // Distribuição automática de prêmios ao final de desafios
+    startPrizeDistributionWorker();
 
     // Descobrir IPs da máquina
     const networkIPs = getNetworkIPs();

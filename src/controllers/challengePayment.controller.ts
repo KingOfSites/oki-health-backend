@@ -243,6 +243,14 @@ export class ChallengePaymentController {
           return transaction;
         });
 
+        // Comissão de afiliado (se aplicável) — entrada em desafio
+        try {
+          const { AffiliateService } = await import("../services/affiliate.service");
+          await AffiliateService.calculateCommissionForPayment(userId, entryAmount, "challenge_entry");
+        } catch (error) {
+          console.error("Erro ao calcular comissão de afiliado (challenge_entry):", error);
+        }
+
         // Verificar saldo final após a transação
         const finalUser = await prisma.user.findUnique({
           where: { id: userId },
@@ -441,6 +449,14 @@ export class ChallengePaymentController {
           await prisma.challengeParticipant.create({
             data: { userId, challengeId, progress: 0, points: 0 },
           });
+
+          // Comissão de afiliado (se aplicável)
+          try {
+            const { AffiliateService } = await import("../services/affiliate.service");
+            await AffiliateService.calculateCommissionForPayment(userId, amountWithFee, "challenge_entry");
+          } catch (error) {
+            console.error("Erro ao calcular comissão de afiliado (challenge_entry):", error);
+          }
         }
 
         return res.json({
@@ -589,6 +605,14 @@ export class ChallengePaymentController {
           points: 0,
         },
       });
+
+      // Comissão de afiliado (se aplicável) — confirmação PIX
+      try {
+        const { AffiliateService } = await import("../services/affiliate.service");
+        await AffiliateService.calculateCommissionForPayment(transaction.userId, transaction.amount, "challenge_entry");
+      } catch (error) {
+        console.error("Erro ao calcular comissão de afiliado (challenge_entry):", error);
+      }
 
       return res.json({
         success: true,

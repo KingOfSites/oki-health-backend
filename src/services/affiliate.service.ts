@@ -146,7 +146,7 @@ export class AffiliateService {
         referrerId: referrer.id,
         referredUserId: referredUserId,
         commission: 0, // Será calculado quando houver conversão
-        commissionRate: 0.1, // 10%
+        commissionRate: 0.15, // 15%
         status: "pending",
         source: "signup",
       },
@@ -208,7 +208,7 @@ export class AffiliateService {
           referrerId: referrer.id,
           referredUserId: userId,
           commission: 0, // Será calculado quando houver conversão
-          commissionRate: 0.1, // 10%
+          commissionRate: 0.15, // 15%
           status: "pending",
           source: "manual",
         },
@@ -218,8 +218,8 @@ export class AffiliateService {
     return { success: true, message: "Código de afiliado registrado com sucesso" };
   }
 
-  // Calcular comissão quando alguém assina premium
-  static async calculateCommissionForSubscription(referredUserId: string, subscriptionAmount: number) {
+  // Calcular comissão para um pagamento convertido (assinatura, entrada em desafio, etc.)
+  static async calculateCommissionForPayment(referredUserId: string, amount: number, source: string) {
     const referredUser = await prisma.user.findUnique({
       where: { id: referredUserId },
       select: { referredBy: true },
@@ -229,16 +229,16 @@ export class AffiliateService {
       return null; // Não foi indicado por ninguém
     }
 
-    // Taxa de comissão padrão: 10% do valor da assinatura
-    const commissionRate = 0.1;
-    const commission = subscriptionAmount * commissionRate;
+    // Taxa de comissão padrão: 15%
+    const commissionRate = 0.15;
+    const commission = amount * commissionRate;
 
     // Atualizar ou criar referral com comissão
     const referral = await prisma.referral.findFirst({
       where: {
         referrerId: referredUser.referredBy,
         referredUserId: referredUserId,
-        source: "subscription",
+        source,
       },
     });
 
@@ -249,6 +249,7 @@ export class AffiliateService {
         data: {
           commission,
           status: "pending",
+          commissionRate,
         },
       });
     } else {
@@ -260,7 +261,7 @@ export class AffiliateService {
           commission,
           commissionRate,
           status: "pending",
-          source: "subscription",
+          source,
         },
       });
     }
@@ -284,10 +285,17 @@ export class AffiliateService {
         userId: referredUser.referredBy,
         type: "affiliate_commission",
         amount: commission,
+        status: "completed",
+        description: `Comissão de afiliado (${source})`,
       },
     });
 
     return commission;
+  }
+
+  // Compat: assinatura premium
+  static async calculateCommissionForSubscription(referredUserId: string, subscriptionAmount: number) {
+    return this.calculateCommissionForPayment(referredUserId, subscriptionAmount, "subscription");
   }
 
   // Listar todas as indicações (referrals) do afiliado

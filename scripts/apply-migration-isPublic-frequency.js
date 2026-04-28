@@ -6,7 +6,7 @@ const prisma = new PrismaClient();
 
 async function applyMigration() {
   try {
-    console.log('🔧 Iniciando migration: isPublic e frequency...\n');
+    console.log('🔧 Iniciando migration: isPublic e frequency...\n');   
 
     // Verificar se as colunas já existem
     const checkColumns = await prisma.$queryRaw`

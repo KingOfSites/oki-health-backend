@@ -2,6 +2,23 @@ import { Request, Response } from "express";
 import prisma from "../config/database";
 import { mpClient } from "../lib/mercadopago";
 import { Payment, CardToken } from "mercadopago";
+import { AffiliateService } from "../services/affiliate.service";
+
+// Helper: dispara cálculo de comissão de afiliado sem quebrar o fluxo principal.
+async function commissionAfterSubscription(
+  userId: string,
+  amount: number,
+): Promise<void> {
+  try {
+    await AffiliateService.calculateCommissionForPayment(
+      userId,
+      amount,
+      "subscription",
+    );
+  } catch (err) {
+    console.error("[Affiliate] Erro ao calcular comissão de assinatura:", err);
+  }
+}
 
 export class SubscribeController {
   // Resolve plano por id, nome ou planType (compatibilidade).
@@ -285,6 +302,7 @@ export class SubscribeController {
           "✅ Usuário marcado como PRO após pagamento aprovado:",
           userId
         );
+        await commissionAfterSubscription(userId, plan.price);
       }
 
       // Registra transação no banco com dados do pagamento
@@ -422,6 +440,7 @@ export class SubscribeController {
 
       if (mpResponse.status === "approved") {
         await prisma.user.update({ where: { id: userId }, data: { isPro: true } as any });
+        await commissionAfterSubscription(userId, plan.price);
       }
 
       await prisma.transaction.create({
@@ -517,6 +536,7 @@ export class SubscribeController {
 
       if (mpResponse.status === "approved") {
         await prisma.user.update({ where: { id: userId }, data: { isPro: true } as any });
+        await commissionAfterSubscription(userId, plan.price);
       }
 
       await prisma.transaction.create({
@@ -767,6 +787,9 @@ export class SubscribeController {
               where: { id: userId },
               data: { isPro: true } as any,
             });
+
+            // Creditar comissão de afiliado (idempotente)
+            await commissionAfterSubscription(userId, plan.price);
           }
         }
       }

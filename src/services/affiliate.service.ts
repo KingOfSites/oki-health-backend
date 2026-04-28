@@ -223,7 +223,14 @@ export class AffiliateService {
   }
 
   // Calcular comissão para um pagamento convertido (assinatura, entrada em desafio, etc.)
-  static async calculateCommissionForPayment(referredUserId: string, amount: number, source: string) {
+  // IDEMPOTENTE: se já existir Referral completed com mesmo (referrer, referred, source),
+  // a comissão NÃO é creditada novamente. Isso impede duplicação caso o webhook do MP
+  // ou polling chamem várias vezes pro mesmo pagamento.
+  static async calculateCommissionForPayment(
+    referredUserId: string,
+    amount: number,
+    source: string,
+  ) {
     const referredUser = await prisma.user.findUnique({
       where: { id: referredUserId },
       select: { referredBy: true },
@@ -237,8 +244,22 @@ export class AffiliateService {
     const commissionRate = 0.15;
     const commission = amount * commissionRate;
 
-    // Atualizar ou criar referral com comissão
-    const referral = await prisma.referral.findFirst({
+    // Idempotência: se já temos referral COMPLETED para esse source, não credita de novo.
+    const completedExisting = await prisma.referral.findFirst({
+      where: {
+        referrerId: referredUser.referredBy,
+        referredUserId: referredUserId,
+        source,
+        status: "completed",
+      },
+    });
+
+    if (completedExisting) {
+      return null; // já comissionado anteriormente
+    }
+
+    // Procurar referral pendente desse source (criado no signup ou registerCode).
+    const pendingReferral = await prisma.referral.findFirst({
       where: {
         referrerId: referredUser.referredBy,
         referredUserId: referredUserId,
@@ -246,44 +267,41 @@ export class AffiliateService {
       },
     });
 
-    if (referral) {
-      // Atualizar comissão existente
+    if (pendingReferral) {
+      // Promover de "pending" para "completed" + atualizar comissão
       await prisma.referral.update({
-        where: { id: referral.id },
+        where: { id: pendingReferral.id },
         data: {
           commission,
-          status: "pending",
+          status: "completed",
           commissionRate,
+          paid_at: new Date(),
         },
       });
     } else {
-      // Criar novo registro de comissão
       await prisma.referral.create({
         data: {
           referrerId: referredUser.referredBy,
           referredUserId: referredUserId,
           commission,
           commissionRate,
-          status: "pending",
+          status: "completed",
           source,
+          paid_at: new Date(),
         },
       });
     }
 
-    // Atualizar saldo do afiliado
+    // Creditar na carteira do afiliado
     await prisma.user.update({
       where: { id: referredUser.referredBy },
       data: {
-        balance: {
-          increment: commission,
-        },
-        total_earned: {
-          increment: commission,
-        },
+        balance: { increment: commission },
+        total_earned: { increment: commission },
       },
     });
 
-    // Criar transação
+    // Registrar transação para auditoria
     await prisma.transaction.create({
       data: {
         userId: referredUser.referredBy,
@@ -293,6 +311,10 @@ export class AffiliateService {
         description: `Comissão de afiliado (${source})`,
       },
     });
+
+    console.log(
+      `💰 [Affiliate] Comissão R$ ${commission.toFixed(2)} (${(commissionRate * 100).toFixed(0)}%) creditada ao afiliado ${referredUser.referredBy} | source=${source} | indicado=${referredUserId}`,
+    );
 
     return commission;
   }

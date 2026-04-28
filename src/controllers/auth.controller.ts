@@ -74,15 +74,31 @@ export class AuthController {
     }
   }
 
-  // POST /api/auth/google — Mobile (idToken)
+  // POST /api/auth/google — Mobile
+  // Aceita 2 formatos:
+  //   1) { idToken } → valida no Google tokeninfo (caminho seguro)
+  //   2) { email, name, googleId, photo? } → payload direto (find-or-create)
   static async googleSignIn(req: Request, res: Response, next: NextFunction) {
     try {
-      const { idToken } = req.body;
-      if (!idToken) {
-        return res.status(400).json({ success: false, message: "idToken é obrigatório" });
-      }
+      const { idToken, email, name, googleId, photo } = req.body;
 
-      const result = await AuthService.googleSignIn(idToken);
+      let result;
+
+      if (idToken) {
+        result = await AuthService.googleSignIn(idToken);
+      } else if (googleId && email) {
+        result = await AuthService.googleSignInDirect({
+          email,
+          name,
+          googleId,
+          photo,
+        });
+      } else {
+        return res.status(400).json({
+          success: false,
+          message: "Envie 'idToken' OU { email, name, googleId, photo? }",
+        });
+      }
 
       return res.status(200).json({
         success: true,

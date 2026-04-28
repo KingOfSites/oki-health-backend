@@ -259,6 +259,74 @@ export class AuthService {
   }
 
   // ----------------------------------------------------
+  // GOOGLE SIGN-IN DIRECT (Mobile — payload direto)
+  // Recebe { email, name, googleId, photo } e faz find-or-create.
+  // Mesmo padrão do facebookSignInDirect / appleSignInDirect.
+  // ----------------------------------------------------
+  static async googleSignInDirect(data: {
+    email: string;
+    name: string;
+    googleId: string;
+    photo?: string | null;
+  }): Promise<AuthResponse & { isNew: boolean }> {
+    const { email, name, googleId, photo } = data;
+
+    if (!googleId || !email) {
+      throw new AppError(400, "googleId e email são obrigatórios");
+    }
+
+    let isNew = false;
+    let user = await prisma.user.findFirst({
+      where: { OR: [{ googleId }, { email }] },
+    });
+
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          googleId,
+          email,
+          name: name || email.split("@")[0],
+          avatar_url: photo ?? null,
+          password: null,
+          isPro: false,
+        },
+      });
+      isNew = true;
+    } else if (!user.googleId) {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          googleId,
+          avatar_url: user.avatar_url ?? photo ?? null,
+        },
+      });
+    }
+
+    const token = JWTUtils.generate(user.id);
+
+    return {
+      isNew,
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        age: user.age as number,
+        city: user.city as string,
+        sexo: user.sexo === "M" || user.sexo === "F" ? user.sexo : null,
+        peso: user.peso ?? null,
+        altura: user.altura ?? null,
+        atividade: user.atividade ?? null,
+        xp: user.xp,
+        level: user.level,
+        avatar_url: user.avatar_url ?? null,
+        created_at: user.created_at,
+        updated_at: user.updated_at,
+      },
+    };
+  }
+
+  // ----------------------------------------------------
   // GOOGLE OAUTH CALLBACK
   // ----------------------------------------------------
   static async googleCallback(

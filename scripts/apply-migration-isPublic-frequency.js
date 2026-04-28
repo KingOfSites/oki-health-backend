@@ -1,7 +1,4 @@
-/**
- * Script para aplicar migration de isPublic e frequency
- * Este script executa a migration SQL diretamente usando a conexão do Prisma
- */
+
 
 const { PrismaClient } = require('@prisma/client');
 

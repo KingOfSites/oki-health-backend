@@ -4,6 +4,9 @@ import { authenticate } from "../middleware/auth";
 
 const router = Router();
 
+// 🔥 LISTAR PLANOS (público — qualquer usuário pode ver os planos disponíveis)
+router.get("/plans", SubscribeController.listPlans);
+
 // 🔥 ROTAS PROTEGIDAS — agora com authenticate!
 router.post("/card", authenticate, SubscribeController.subscribeWithCard);
 router.post("/pix", authenticate, SubscribeController.subscribeWithPix);

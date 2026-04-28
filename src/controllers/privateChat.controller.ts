@@ -57,8 +57,8 @@ export class PrivateChatController {
         },
         orderBy: [{ lastMessageAt: "desc" }, { updated_at: "desc" }],
         include: {
-          userA: { select: { id: true, name: true, avatar_url: true } },
-          userB: { select: { id: true, name: true, avatar_url: true } },
+          userA: { select: { id: true, name: true, nickname: true, avatar_url: true } },
+          userB: { select: { id: true, name: true, nickname: true, avatar_url: true } },
           messages: {
             take: 1,
             orderBy: { created_at: "desc" },
@@ -114,8 +114,8 @@ export class PrivateChatController {
       const existing = await prisma.privateConversation.findUnique({
         where: { challengeId_userAId_userBId: { challengeId, userAId, userBId } },
         include: {
-          userA: { select: { id: true, name: true, avatar_url: true } },
-          userB: { select: { id: true, name: true, avatar_url: true } },
+          userA: { select: { id: true, name: true, nickname: true, avatar_url: true } },
+          userB: { select: { id: true, name: true, nickname: true, avatar_url: true } },
         },
       });
       if (existing) {
@@ -131,8 +131,8 @@ export class PrivateChatController {
           userBId,
         },
         include: {
-          userA: { select: { id: true, name: true, avatar_url: true } },
-          userB: { select: { id: true, name: true, avatar_url: true } },
+          userA: { select: { id: true, name: true, nickname: true, avatar_url: true } },
+          userB: { select: { id: true, name: true, nickname: true, avatar_url: true } },
         },
       });
 
@@ -163,7 +163,7 @@ export class PrivateChatController {
         where: { conversationId },
         orderBy: { created_at: "asc" },
         include: {
-          sender: { select: { id: true, name: true, avatar_url: true } },
+          sender: { select: { id: true, name: true, nickname: true, avatar_url: true } },
         },
       });
 
@@ -217,7 +217,7 @@ export class PrivateChatController {
           senderId: userId,
           message: String(message),
         },
-        include: { sender: { select: { id: true, name: true, avatar_url: true } } },
+        include: { sender: { select: { id: true, name: true, nickname: true, avatar_url: true } } },
       });
 
       await prisma.privateConversation.update({

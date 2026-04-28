@@ -85,6 +85,7 @@ model Challenge {
   startTime             String?
   endTime               String?
   isPublic              Boolean?               @default(true)
+  accessCode            String?                @db.VarChar(12)
   frequency             String?                @default("daily") @db.VarChar(20)
   durationWeeks         Int?
   mode                  String?                @default("activity") @db.VarChar(20)

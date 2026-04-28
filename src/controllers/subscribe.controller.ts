@@ -4,6 +4,54 @@ import { mpClient } from "../lib/mercadopago";
 import { Payment, CardToken } from "mercadopago";
 
 export class SubscribeController {
+  // Resolve plano por id, nome ou planType (compatibilidade).
+  // Retorna null se nenhum dado válido foi enviado.
+  static async resolvePlan(body: {
+    planId?: string;
+    planName?: string;
+    planType?: "monthly" | "annual";
+  }) {
+    if (body.planId) {
+      return prisma.plan.findUnique({ where: { id: body.planId } });
+    }
+    if (body.planName) {
+      return prisma.plan.findFirst({ where: { name: body.planName } });
+    }
+    if (body.planType) {
+      const fallbackName =
+        body.planType === "annual" ? "Premium Anual" : "Premium Mensal";
+      return prisma.plan.findFirst({ where: { name: fallbackName } });
+    }
+    return null;
+  }
+
+  // ------------------------------ LISTAR PLANOS ------------------------------
+  static async listPlans(_req: Request, res: Response) {
+    try {
+      const plans = await prisma.plan.findMany({
+        orderBy: { price: "asc" },
+        select: {
+          id: true,
+          name: true,
+          price: true,
+          benefits: true,
+        },
+      });
+
+      return res.status(200).json({
+        success: true,
+        data: plans,
+      });
+    } catch (error: any) {
+      console.error("Erro ao listar planos:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Erro ao listar planos.",
+        error: error?.message,
+      });
+    }
+  }
+
   // ------------------------------ CARTÃO ------------------------------
   static async subscribeWithCard(req: Request, res: Response) {
     try {
@@ -44,12 +92,7 @@ export class SubscribeController {
         });
       }
 
-      const planName =
-        planType === "annual" ? "Premium Anual" : "Premium Mensal";
-
-      const plan = await prisma.plan.findFirst({
-        where: { name: planName },
-      });
+      const plan = await SubscribeController.resolvePlan(req.body);
 
       if (!plan) {
         return res.status(404).json({
@@ -307,8 +350,7 @@ export class SubscribeController {
         return res.status(400).json({ success: false, message: "Dados incompletos para pagamento." });
       }
 
-      const planName = planType === "annual" ? "Premium Anual" : "Premium Mensal";
-      const plan = await prisma.plan.findFirst({ where: { name: planName } });
+      const plan = await SubscribeController.resolvePlan(req.body);
 
       if (!plan) {
         return res.status(404).json({ success: false, message: "Plano não encontrado." });
@@ -419,8 +461,7 @@ export class SubscribeController {
         return res.status(400).json({ success: false, message: "Dados incompletos para pagamento." });
       }
 
-      const planName = planType === "annual" ? "Premium Anual" : "Premium Mensal";
-      const plan = await prisma.plan.findFirst({ where: { name: planName } });
+      const plan = await SubscribeController.resolvePlan(req.body);
 
       if (!plan) {
         return res.status(404).json({ success: false, message: "Plano não encontrado." });
@@ -527,12 +568,7 @@ export class SubscribeController {
         });
       }
 
-      const planName =
-        planType === "annual" ? "Premium Anual" : "Premium Mensal";
-
-      const plan = await prisma.plan.findFirst({
-        where: { name: planName },
-      });
+      const plan = await SubscribeController.resolvePlan(req.body);
 
       if (!plan) {
         return res.status(404).json({

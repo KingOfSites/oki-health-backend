@@ -272,6 +272,7 @@ export class ChallengesService {
         endTime: true,
         status: true,
         isPublic: true,
+        accessCode: true,
         participants: {
           select: {
             userId: true,
@@ -280,6 +281,7 @@ export class ChallengesService {
         createdBy: {
           select: {
             name: true,
+            nickname: true,
           },
         },
       },
@@ -310,6 +312,9 @@ export class ChallengesService {
         participants_count,
         rules: null,
         computed_status,
+        is_public: challenge.isPublic,
+        // Só expõe o código para o criador (privacidade)
+        access_code: is_creator ? challenge.accessCode : null,
         created_by_id: challenge.createdById,
         creator_id: challenge.createdById,
         createdById: challenge.createdById,
@@ -317,10 +322,12 @@ export class ChallengesService {
         createdBy: {
           id: challenge.createdById,
           name: challenge.createdBy.name,
+          nickname: challenge.createdBy.nickname,
         },
         creator: {
           id: challenge.createdById,
           name: challenge.createdBy.name,
+          nickname: challenge.createdBy.nickname,
         },
         isCreator: is_creator,
         management: {
@@ -720,7 +727,11 @@ export class ChallengesService {
   // --------------------------------
   // PARTICIPAR DE DESAFIO
   // --------------------------------
-  static async joinChallenge(userId: string, challengeId: string) {
+  static async joinChallenge(
+    userId: string,
+    challengeId: string,
+    accessCode?: string,
+  ) {
     // Verificar se o desafio existe
     const challenge = await prisma.challenge.findUnique({
       where: { id: challengeId },
@@ -728,6 +739,30 @@ export class ChallengesService {
 
     if (!challenge) {
       throw new Error("Desafio não encontrado");
+    }
+
+    // Desafio privado exige código de acesso (exceto para o criador)
+    if (
+      challenge.isPublic === false &&
+      challenge.createdById !== userId &&
+      challenge.accessCode
+    ) {
+      const provided = (accessCode || "").trim().toUpperCase();
+      if (!provided) {
+        return {
+          requiresAccessCode: true,
+          already: false,
+          message: "Este desafio é privado. Informe o código de acesso.",
+        };
+      }
+      if (provided !== challenge.accessCode.toUpperCase()) {
+        return {
+          requiresAccessCode: true,
+          invalidAccessCode: true,
+          already: false,
+          message: "Código de acesso inválido.",
+        };
+      }
     }
 
     if (challenge.status === "cancelled") {

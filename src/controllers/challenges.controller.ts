@@ -222,6 +222,18 @@ export class ChallengesController {
         endTimeRaw: endTime,
       });
 
+      const isPublicResolved = isPublic !== undefined ? Boolean(isPublic) : true;
+
+      // Para desafios privados, gerar código de acesso de 6 caracteres alfanuméricos
+      const generateAccessCode = (): string => {
+        const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // sem 0/O/I/1
+        let out = "";
+        for (let i = 0; i < 6; i++) {
+          out += chars[Math.floor(Math.random() * chars.length)];
+        }
+        return out;
+      };
+
       const challengePayload: any = {
         createdById: req.userId,
         title,
@@ -241,7 +253,8 @@ export class ChallengesController {
         minWeight: minWeight ? parseFloat(minWeight) : null,
         maxWeight: maxWeight ? parseFloat(maxWeight) : null,
         requiredActivityLevel: requiredActivityLevel || null,
-        isPublic: isPublic !== undefined ? Boolean(isPublic) : true,
+        isPublic: isPublicResolved,
+        accessCode: isPublicResolved ? null : generateAccessCode(),
         frequency: frequency || "daily",
         mode: mode || "activity",
         prizeDistributionType: prizeDistributionType || "integral",
@@ -418,7 +431,22 @@ static async searchChallenges(req: AuthRequest, res: Response, next: NextFunctio
         });
       }
 
-      const result = await ChallengesService.joinChallenge(req.userId, challengeId);
+      const accessCode = (req.body?.accessCode as string | undefined)?.trim();
+      const result = await ChallengesService.joinChallenge(
+        req.userId,
+        challengeId,
+        accessCode,
+      );
+
+      // 🟧 Desafio privado exige código de acesso
+      if ((result as any).requiresAccessCode) {
+        return res.status(403).json({
+          success: false,
+          requiresAccessCode: true,
+          invalidAccessCode: (result as any).invalidAccessCode || false,
+          message: (result as any).message,
+        });
+      }
 
       // 🟥 Validação falhou (não atende aos critérios)
       if ((result as any).validationFailed) {

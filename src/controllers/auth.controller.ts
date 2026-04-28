@@ -114,17 +114,33 @@ export class AuthController {
     }
   }
 
-  // POST /api/auth/facebook — Mobile (accessToken)
+  // POST /api/auth/facebook — Mobile
+  // Aceita 2 formatos:
+  //   1) { accessToken } → valida via Graph API (caminho seguro, legado)
+  //   2) { email, name, facebookId, photo? } → payload direto (find-or-create)
   static async facebookSignIn(req: Request, res: Response, next: NextFunction) {
     try {
-      const { accessToken } = req.body;
-      const tokenToUse = accessToken || req.body.token; // fallback
-      
-      if (!tokenToUse) {
-        return res.status(400).json({ success: false, message: "token (ou accessToken) é obrigatório" });
-      }
+      const { accessToken, token, email, name, facebookId, photo } = req.body;
+      const tokenToUse = accessToken || token;
 
-      const result = await AuthService.facebookSignIn(tokenToUse);
+      let result;
+
+      if (tokenToUse) {
+        result = await AuthService.facebookSignIn(tokenToUse);
+      } else if (facebookId && email) {
+        result = await AuthService.facebookSignInDirect({
+          email,
+          name,
+          facebookId,
+          photo,
+        });
+      } else {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Envie 'accessToken' OU { email, name, facebookId, photo? }",
+        });
+      }
 
       return res.status(200).json({
         success: true,

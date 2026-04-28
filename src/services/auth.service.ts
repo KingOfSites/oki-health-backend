@@ -544,6 +544,74 @@ export class AuthService {
   }
 
   // ----------------------------------------------------
+  // FACEBOOK SIGN-IN DIRECT (Mobile — payload direto)
+  // Recebe { email, name, facebookId, photo } do app e faz find-or-create.
+  // Segue o mesmo padrão do googleSignInDirect / appleSignInDirect.
+  // ----------------------------------------------------
+  static async facebookSignInDirect(data: {
+    email: string;
+    name: string;
+    facebookId: string;
+    photo?: string | null;
+  }): Promise<AuthResponse & { isNew: boolean }> {
+    const { email, name, facebookId, photo } = data;
+
+    if (!facebookId || !email) {
+      throw new AppError(400, "facebookId e email são obrigatórios");
+    }
+
+    let isNew = false;
+    let user = await prisma.user.findFirst({
+      where: { OR: [{ facebookId }, { email }] },
+    });
+
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          facebookId,
+          email,
+          name: name || email.split("@")[0],
+          avatar_url: photo ?? null,
+          password: null,
+          isPro: false,
+        },
+      });
+      isNew = true;
+    } else if (!user.facebookId) {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          facebookId,
+          avatar_url: user.avatar_url ?? photo ?? null,
+        },
+      });
+    }
+
+    const token = JWTUtils.generate(user.id);
+
+    return {
+      isNew,
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        age: user.age as number,
+        city: user.city as string,
+        sexo: user.sexo === "M" || user.sexo === "F" ? user.sexo : null,
+        peso: user.peso ?? null,
+        altura: user.altura ?? null,
+        atividade: user.atividade ?? null,
+        xp: user.xp,
+        level: user.level,
+        avatar_url: user.avatar_url ?? null,
+        created_at: user.created_at,
+        updated_at: user.updated_at,
+      },
+    };
+  }
+
+  // ----------------------------------------------------
   // GET PROFILE ✅ (ADICIONADO)
   // ----------------------------------------------------
   static async getProfile(userId: string) {

@@ -193,9 +193,12 @@ export class AuthService {
     idToken: string,
   ): Promise<AuthResponse & { isNew: boolean }> {
     // Valida o idToken diretamente no Google
-    const res = await fetch(
-      `https://oauth2.googleapis.com/tokeninfo?id_token=${idToken}`,
-    );
+    // GET com JWT longo pode falhar (limite de URL). tokeninfo aceita POST.
+    const res = await fetch("https://oauth2.googleapis.com/tokeninfo", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ id_token: idToken }).toString(),
+    });
     if (!res.ok) {
       throw new AppError(401, "Token do Google inválido");
     }

@@ -3,16 +3,6 @@ import { AffiliateService } from "../services/affiliate.service";
 import { AuthRequest } from "../middleware/auth";
 
 export class AffiliateController {
-  // Verificar se o usuário é premium
-  static async checkPremium(userId: string): Promise<boolean> {
-    const prisma = (await import("../config/database")).default;
-    const rawQuery = await prisma.$queryRaw<Array<{ isPro: number }>>`
-      SELECT isPro FROM users WHERE id = ${userId}
-    `;
-    const rawIsPro = rawQuery[0]?.isPro;
-    return rawIsPro === 1 || Number(rawIsPro) === 1;
-  }
-
   // Obter estatísticas do afiliado
   static async getStats(req: AuthRequest, res: Response, next: NextFunction) {
     try {
@@ -20,15 +10,6 @@ export class AffiliateController {
         return res.status(401).json({
           success: false,
           message: "Não autenticado",
-        });
-      }
-
-      // Verificar se é premium
-      const isPremium = await AffiliateController.checkPremium(req.userId);
-      if (!isPremium) {
-        return res.status(403).json({
-          success: false,
-          message: "Apenas usuários premium podem acessar o programa de afiliados",
         });
       }
 
@@ -53,15 +34,6 @@ export class AffiliateController {
         });
       }
 
-      // Verificar se é premium
-      const isPremium = await AffiliateController.checkPremium(req.userId);
-      if (!isPremium) {
-        return res.status(403).json({
-          success: false,
-          message: "Apenas usuários premium podem acessar o programa de afiliados",
-        });
-      }
-
       const baseUrl =
         process.env.FRONTEND_URL || "https://app-invite-landing.vercel.app";
       const link = await AffiliateService.getAffiliateLink(req.userId, baseUrl);
@@ -82,15 +54,6 @@ export class AffiliateController {
         return res.status(401).json({
           success: false,
           message: "Não autenticado",
-        });
-      }
-
-      // Verificar se é premium
-      const isPremium = await AffiliateController.checkPremium(req.userId);
-      if (!isPremium) {
-        return res.status(403).json({
-          success: false,
-          message: "Apenas usuários premium podem acessar o programa de afiliados",
         });
       }
 
@@ -130,15 +93,6 @@ export class AffiliateController {
         });
       }
 
-      // Verificar se é premium
-      const isPremium = await AffiliateController.checkPremium(req.userId);
-      if (!isPremium) {
-        return res.status(403).json({
-          success: false,
-          message: "Apenas usuários premium podem acessar o programa de afiliados",
-        });
-      }
-
       const { status, source, limit, offset } = req.query;
 
       const filters: any = {};
@@ -168,15 +122,6 @@ export class AffiliateController {
         });
       }
 
-      // Verificar se é premium
-      const isPremium = await AffiliateController.checkPremium(req.userId);
-      if (!isPremium) {
-        return res.status(403).json({
-          success: false,
-          message: "Apenas usuários premium podem acessar o programa de afiliados",
-        });
-      }
-
       const limit = req.query.limit ? parseInt(req.query.limit as string) : 20;
       const offset = req.query.offset ? parseInt(req.query.offset as string) : 0;
 
@@ -198,15 +143,6 @@ export class AffiliateController {
         return res.status(401).json({
           success: false,
           message: "Não autenticado",
-        });
-      }
-
-      // Verificar se é premium
-      const isPremium = await AffiliateController.checkPremium(req.userId);
-      if (!isPremium) {
-        return res.status(403).json({
-          success: false,
-          message: "Apenas usuários premium podem acessar o programa de afiliados",
         });
       }
 

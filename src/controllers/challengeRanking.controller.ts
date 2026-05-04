@@ -44,23 +44,32 @@ export class ChallengeRankingController {
 
       // Buscar participantes ordenados por pontos (maior para menor)
       const participants = await prisma.$queryRawUnsafe(
-        `SELECT 
+        `SELECT
           cp.id,
           cp.userId,
           cp.points,
           cp.joinedAt,
           u.name as user_name,
+          u.nickname as user_nickname,
           u.avatar_url,
           COUNT(CASE WHEN cc.verificationStatus = 'verified' THEN 1 END) as verified_count
          FROM challenge_participants cp
          JOIN users u ON cp.userId = u.id
          LEFT JOIN challenge_chat cc ON cc.userId = cp.userId AND cc.challengeId = cp.challengeId
          WHERE cp.challengeId = ?
-         GROUP BY cp.id, cp.userId, cp.points, cp.joinedAt, u.name, u.avatar_url
+         GROUP BY cp.id, cp.userId, cp.points, cp.joinedAt, u.name, u.nickname, u.avatar_url
          ORDER BY cp.points DESC, verified_count DESC, cp.joinedAt ASC
          LIMIT 100`,
         challengeId
       ) as any[];
+
+      // PDF #13: dentro de desafios mostramos apenas nickname ou primeiro nome.
+      const publicName = (row: { user_nickname?: string | null; user_name?: string | null }) => {
+        const nick = row.user_nickname?.trim();
+        if (nick) return nick;
+        const first = row.user_name?.trim().split(/\s+/)[0];
+        return first || "Usuário";
+      };
 
       // Formatar ranking
       const ranking = participants.map((p, index) => {
@@ -73,7 +82,7 @@ export class ChallengeRankingController {
         return {
           position,
           userId: p.userId,
-          userName: p.user_name || "Usuário",
+          userName: publicName(p),
           avatarUrl: p.avatar_url || null,
           points: p.points || 0,
           verifiedCount: Number(p.verified_count) || 0,

@@ -7,6 +7,14 @@ function orderPair(a: string, b: string) {
   return a < b ? [a, b] as const : [b, a] as const;
 }
 
+// PDF #13: dentro de desafios não exibimos sobrenome — devolvemos apenas
+// o primeiro nome no campo `name`, mantendo nickname/avatar inalterados.
+function stripLastName<T extends { name?: string | null } | null | undefined>(user: T): T {
+  if (!user) return user;
+  const first = user.name?.trim().split(/\s+/)[0] ?? "";
+  return { ...user, name: first || "Usuário" } as T;
+}
+
 async function ensureBothAreParticipants(challengeId: string, userIdA: string, userIdB: string) {
   const challenge = await prisma.challenge.findUnique({
     where: { id: challengeId },
@@ -74,7 +82,7 @@ export class PrivateChatController {
           return {
             id: c.id,
             challengeId: c.challengeId,
-            otherUser: other,
+            otherUser: stripLastName(other),
             lastMessage: last ? { ...last } : null,
             lastMessageAt: c.lastMessageAt,
             updated_at: c.updated_at,
@@ -120,7 +128,7 @@ export class PrivateChatController {
       });
       if (existing) {
         const other = existing.userAId === userId ? existing.userB : existing.userA;
-        return res.json({ data: { id: existing.id, challengeId, otherUser: other } });
+        return res.json({ data: { id: existing.id, challengeId, otherUser: stripLastName(other) } });
       }
 
       const created = await prisma.privateConversation.create({
@@ -137,7 +145,7 @@ export class PrivateChatController {
       });
 
       const other = created.userAId === userId ? created.userB : created.userA;
-      return res.json({ data: { id: created.id, challengeId, otherUser: other } });
+      return res.json({ data: { id: created.id, challengeId, otherUser: stripLastName(other) } });
     } catch (err) {
       console.error("[PrivateChat] Erro ao criar conversa:", err);
       return res.status(500).json({ error: "Erro ao criar conversa" });
@@ -172,7 +180,7 @@ export class PrivateChatController {
           id: m.id,
           conversationId: m.conversationId,
           senderId: m.senderId,
-          sender: m.sender,
+          sender: stripLastName(m.sender),
           message: m.message,
           created_at: m.created_at,
           readAt: m.readAt,
@@ -230,7 +238,7 @@ export class PrivateChatController {
           id: created.id,
           conversationId: created.conversationId,
           senderId: created.senderId,
-          sender: created.sender,
+          sender: stripLastName(created.sender),
           message: created.message,
           created_at: created.created_at,
           readAt: created.readAt,

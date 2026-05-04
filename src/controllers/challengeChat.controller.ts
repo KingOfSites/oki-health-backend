@@ -3,6 +3,16 @@ import { randomUUID } from "crypto";
 import prisma from "../config/database";
 import { ChallengesService } from "../services/challenges.service";
 
+// Identidade pública dentro de um desafio: prioriza nickname; cai para o
+// primeiro nome do usuário; sobrenomes nunca são expostos no chat (PDF #13).
+function publicChatName(user: { name?: string | null; nickname?: string | null } | null): string {
+  if (!user) return "Usuário";
+  const nick = user.nickname?.trim();
+  if (nick) return nick;
+  const first = user.name?.trim().split(/\s+/)[0];
+  return first || "Usuário";
+}
+
 export class ChallengeChatController {
   static async getMessages(req: Request, res: Response) {
     try {
@@ -11,10 +21,10 @@ export class ChallengeChatController {
 
       const membership = await ChallengesService.getChallengeMembership(challengeId, userId);
       if (!membership.exists) {
-        return res.status(404).json({ error: "Desafio nÃ£o encontrado" });
+        return res.status(404).json({ error: "Desafio não encontrado" });
       }
 
-      if (!membership.isParticipant) {
+      if (!membership.isParticipant && !membership.isCreator) {
         return res.status(403).json({ error: "Apenas participantes podem acessar o chat do desafio" });
       }
 
@@ -25,6 +35,7 @@ export class ChallengeChatController {
           user: {
             select: {
               name: true,
+              nickname: true,
               avatar_url: true,
             },
           },
@@ -32,18 +43,25 @@ export class ChallengeChatController {
       });
 
       return res.json({
-        data: messages.map((msg) => ({
-          id: msg.id,
-          userId: msg.userId,
-          user_name: msg.user.name ?? "UsuÃ¡rio",
-          avatar_url: msg.user.avatar_url ?? null,
-          message: msg.message,
-          imageUrl: msg.imageUrl ?? null,
-          created_at: msg.created_at,
-          verificationStatus: msg.imageUrl ? (msg.verificationStatus ?? "pending") : null,
-          verifiedAt: msg.verifiedAt ?? null,
-          verificationReason: msg.verificationReason ?? null,
-        })),
+        data: messages.map((msg) => {
+          // PDF #1: imagens rejeitadas são removidas do chat. Mantemos a
+          // mensagem (com texto, se houver) e o status para que o autor
+          // ainda receba o aviso/modal.
+          const isRejected = msg.imageUrl && msg.verificationStatus === "rejected";
+          return {
+            id: msg.id,
+            userId: msg.userId,
+            user_name: publicChatName(msg.user),
+            avatar_url: msg.user.avatar_url ?? null,
+            message: msg.message,
+            imageUrl: isRejected ? null : (msg.imageUrl ?? null),
+            wasImageRejected: Boolean(isRejected),
+            created_at: msg.created_at,
+            verificationStatus: msg.imageUrl ? (msg.verificationStatus ?? "pending") : null,
+            verifiedAt: msg.verifiedAt ?? null,
+            verificationReason: msg.verificationReason ?? null,
+          };
+        }),
       });
     } catch (err: any) {
       console.error("[Chat] Erro ao carregar mensagens:", err);
@@ -60,10 +78,15 @@ export class ChallengeChatController {
 
       const membership = await ChallengesService.getChallengeMembership(challengeId, userId);
       if (!membership.exists) {
-        return res.status(404).json({ error: "Desafio nÃ£o encontrado" });
+        return res.status(404).json({ error: "Desafio não encontrado" });
       }
 
-      if (!membership.isParticipant) {
+      // PDF #3: criador pode enviar mensagens (mas não imagens), mesmo
+      // que tenha optado por "criar e observar" (sem entrar como
+      // participante). Os demais usuários precisam ser participantes.
+      const isCreator = membership.isCreator;
+      const canSendText = membership.isParticipant || isCreator;
+      if (!canSendText) {
         return res.status(403).json({
           error: "Apenas participantes podem enviar mensagens ou fotos no desafio",
         });
@@ -71,18 +94,70 @@ export class ChallengeChatController {
 
       if (membership.isCancelled) {
         return res.status(409).json({
-          error: "Este desafio foi cancelado e nÃ£o aceita novas mensagens ou fotos",
+          error: "Este desafio foi cancelado e não aceita novas mensagens ou fotos",
         });
       }
 
       if (membership.isCompleted) {
         return res.status(409).json({
-          error: "Este desafio jÃ¡ foi concluÃ­do e nÃ£o aceita novas mensagens ou fotos",
+          error: "Este desafio já foi concluído e não aceita novas mensagens ou fotos",
+        });
+      }
+
+      // PDF #2 e #3: precisamos das datas e do flag isObserver.
+      const challenge = await prisma.challenge.findUnique({
+        where: { id: challengeId },
+        select: { startDate: true, endDate: true, endTime: true },
+      });
+      if (!challenge) {
+        return res.status(404).json({ error: "Desafio não encontrado" });
+      }
+
+      const isObserver = isCreator && !membership.isParticipant;
+
+      // PDF #3: criador (independente de participar ou não) só envia
+      // mensagens; observador também não pode enviar mídia.
+      if (mediaUrl && (isCreator || isObserver)) {
+        const reason = isCreator
+          ? "O criador do desafio pode enviar apenas mensagens, sem permissão para envio de imagens."
+          : "Usuários no perfil de observador não podem enviar imagens ou fotografias.";
+        return res.status(403).json({ error: reason });
+      }
+
+      // PDF #2: envios só são permitidos a partir da data de início e até
+      // o final do período. Bloqueia tanto antes quanto depois (vai além
+      // do bloqueio de "completed", já que challenge pode estar ativo mas
+      // ainda não ter chegado em startDate quando o criador envia).
+      const now = new Date();
+      const start = new Date(challenge.startDate);
+      // Considera o início como 00:00 do dia programado.
+      const startOfStartDay = new Date(
+        start.getUTCFullYear(),
+        start.getUTCMonth(),
+        start.getUTCDate(),
+        0, 0, 0, 0,
+      );
+      if (now < startOfStartDay) {
+        return res.status(409).json({
+          error: "O desafio ainda não começou. Envios só são permitidos a partir da data de início.",
+        });
+      }
+
+      const end = new Date(challenge.endDate);
+      if (challenge.endTime && /^\d{2}:\d{2}$/.test(challenge.endTime)) {
+        const [h, m] = challenge.endTime.split(":");
+        end.setHours(Number(h), Number(m), 59, 999);
+      } else {
+        end.setHours(23, 59, 59, 999);
+      }
+      if (now > end) {
+        return res.status(409).json({
+          error: "O período do desafio terminou. Não é possível enviar novas mensagens ou fotos.",
         });
       }
 
       if ((!message || !String(message).trim()) && !mediaUrl) {
-        return res.status(400).json({ error: "Mensagem ou mÃ­dia (imagem/vÃ­deo) Ã© obrigatÃ³ria" });
+        return res.status(400).json({ error: "Mensagem ou mídia (imagem/vídeo) é obrigatória" });
       }
 
       const created = await prisma.challengeChat.create({
@@ -98,13 +173,14 @@ export class ChallengeChatController {
           user: {
             select: {
               name: true,
+              nickname: true,
               avatar_url: true,
             },
           },
         },
       });
 
-      // MantÃ©m a requisiÃ§Ã£o principal rÃ¡pida; a verificaÃ§Ã£o assÃ­ncrona continua no write path.
+      // Mantém a requisição principal rápida; a verificação assíncrona continua no write path.
       if (mediaUrl) {
         setImmediate(async () => {
           try {
@@ -140,7 +216,7 @@ export class ChallengeChatController {
               }),
             });
           } catch (verifyErr) {
-            console.error(`[Chat] Falha ao iniciar verificaÃ§Ã£o para a mensagem ${created.id}:`, verifyErr);
+            console.error(`[Chat] Falha ao iniciar verificação para a mensagem ${created.id}:`, verifyErr);
           }
         });
       }
@@ -149,10 +225,11 @@ export class ChallengeChatController {
         data: {
           id: created.id,
           userId: created.userId,
-          user_name: created.user.name ?? "UsuÃ¡rio",
+          user_name: publicChatName(created.user),
           avatar_url: created.user.avatar_url ?? null,
           message: created.message,
           imageUrl: created.imageUrl ?? null,
+          wasImageRejected: false,
           created_at: created.created_at,
           verificationStatus: created.imageUrl ? (created.verificationStatus ?? "pending") : null,
           verifiedAt: created.verifiedAt ?? null,

@@ -1,6 +1,32 @@
 import prisma from "../config/database";
 import { randomUUID } from "crypto";
 
+// Converte o campo `frequency` (string variável guardando ex.: "3", "daily", "5x")
+// na meta numérica de registros por semana exibida nos cards e nas notificações.
+// Retorna null quando o valor não puder ser interpretado como um inteiro válido.
+export function parseWeeklyGoal(value?: string | null): number | null {
+  if (!value) return null;
+  const match = String(value).match(/\d+/);
+  if (!match) return null;
+  const n = parseInt(match[0], 10);
+  if (!Number.isFinite(n) || n < 1 || n > 7) return null;
+  return n;
+}
+
+// Retorna o instante (em horário local do servidor) em que o "dia de início"
+// do desafio termina (23:59:59.999), usado para definir até quando novos
+// participantes podem ingressar e a partir de quando o desafio passa a
+// estar fechado para novas entradas / não pode mais ser excluído.
+export function computeStartDayBoundaries(c: { startDate: Date }) {
+  const start = new Date(c.startDate);
+  const y = start.getUTCFullYear();
+  const m = start.getUTCMonth();
+  const d = start.getUTCDate();
+  const startOfDay = new Date(y, m, d, 0, 0, 0, 0);
+  const endOfDay = new Date(y, m, d, 23, 59, 59, 999);
+  return { startOfDay, endOfDay };
+}
+
 function computeChallengeStatus(c: { startDate: Date, endDate: Date, startTime?: string | null, endTime?: string | null, status?: string | null }): "draft" | "active" | "finished" | "cancelled" {
   if (c.status === "cancelled") return "cancelled";
   if (c.status === "completed") return "finished";
@@ -112,6 +138,7 @@ export class ChallengesService {
             entryPriceCents: true,
             createdById: true,
             isPublic: true,
+            frequency: true,
           },
         },
       },
@@ -132,12 +159,16 @@ export class ChallengesService {
 
     return rows.map(r => {
       const computed_status = computeChallengeStatus(r.challenge);
+      const weeklyGoal = parseWeeklyGoal(r.challenge.frequency);
+      const { endOfDay: endOfStartDay } = computeStartDayBoundaries(r.challenge);
+      const closedForNewParticipants = new Date() > endOfStartDay;
 
       return {
         id: r.challenge.id,
         title: r.challenge.title,
         description: r.challenge.description,
         type: r.challenge.category,
+        category: r.challenge.category,
         status: computed_status,
         participantsCount: countMap.get(r.challenge.id) || 0,
         start_date: r.challenge.startDate,
@@ -148,6 +179,8 @@ export class ChallengesService {
         progress: r.progress,
         cover_url: r.challenge.coverUrl || null,
         entry_price_cents: r.challenge.entryPriceCents,
+        weekly_goal: weeklyGoal,
+        is_closed_for_new_participants: closedForNewParticipants,
         created_by_id: r.challenge.createdById,
         creator_id: r.challenge.createdById,
         createdById: r.challenge.createdById,
@@ -191,6 +224,7 @@ export class ChallengesService {
         entryPriceCents: true,
         createdById: true,
         isPublic: true,
+        frequency: true,
         participants: {
           select: {
             id: true,
@@ -212,12 +246,16 @@ export class ChallengesService {
 
     return rows.map(c => {
       const computed_status = computeChallengeStatus(c);
+      const weeklyGoal = parseWeeklyGoal(c.frequency);
+      const { endOfDay: endOfStartDay } = computeStartDayBoundaries(c);
+      const closedForNewParticipants = new Date() > endOfStartDay;
 
       return {
         id: c.id,
         title: c.title,
         description: c.description,
         type: c.category,
+        category: c.category,
         status: computed_status,
         participantsCount: countMap.get(c.id) || c.participants.length || 0,
         start_date: c.startDate,
@@ -227,6 +265,8 @@ export class ChallengesService {
         participants_count: countMap.get(c.id) || c.participants.length || 0,
         cover_url: c.coverUrl,
         entry_price_cents: c.entryPriceCents,
+        weekly_goal: weeklyGoal,
+        is_closed_for_new_participants: closedForNewParticipants,
         created_by_id: c.createdById,
         creator_id: c.createdById,
         createdById: c.createdById,
@@ -273,6 +313,7 @@ export class ChallengesService {
         status: true,
         isPublic: true,
         accessCode: true,
+        frequency: true,
         participants: {
           select: {
             userId: true,
@@ -294,6 +335,12 @@ export class ChallengesService {
     const isParticipant = challenge.participants.some(p => p.userId === userId);
     const participants_count = challenge.participants.length;
     const is_creator = challenge.createdById === userId;
+    const weeklyGoal = parseWeeklyGoal(challenge.frequency);
+    const { startOfDay: startOfStartDay, endOfDay: endOfStartDay } =
+      computeStartDayBoundaries(challenge);
+    const now = new Date();
+    const closedForNewParticipants = now > endOfStartDay;
+    const allowsCreatorDelete = is_creator && now < startOfStartDay;
 
     return {
       challenge: {
@@ -301,6 +348,7 @@ export class ChallengesService {
         title: challenge.title,
         description: challenge.description,
         type: challenge.category,
+        category: challenge.category,
         status: computed_status,
         participantsCount: participants_count,
         start_date: challenge.startDate,
@@ -313,6 +361,8 @@ export class ChallengesService {
         rules: null,
         computed_status,
         is_public: challenge.isPublic,
+        weekly_goal: weeklyGoal,
+        is_closed_for_new_participants: closedForNewParticipants,
         // Só expõe o código para o criador (privacidade)
         access_code: is_creator ? challenge.accessCode : null,
         created_by_id: challenge.createdById,
@@ -333,8 +383,8 @@ export class ChallengesService {
         management: {
           canManage: is_creator,
           canEdit: is_creator,
-          canDelete: is_creator,
-          canCancel: is_creator,
+          canDelete: allowsCreatorDelete,
+          canCancel: allowsCreatorDelete,
           supportsParticipantCancellation: true,
         },
         is_creator,
@@ -373,6 +423,7 @@ export class ChallengesService {
         created_at: true,
         createdById: true,
         isPublic: true,
+        frequency: true,
         participants: {
           select: {
             userId: true,
@@ -383,6 +434,9 @@ export class ChallengesService {
 
     return challenges.map(c => {
       const computed_status = computeChallengeStatus(c);
+      const weeklyGoal = parseWeeklyGoal(c.frequency);
+      const { endOfDay: endOfStartDay } = computeStartDayBoundaries(c);
+      const closedForNewParticipants = new Date() > endOfStartDay;
 
       return {
         id: c.id,
@@ -397,6 +451,8 @@ export class ChallengesService {
         location: c.location,
         cover_url: c.coverUrl,
         entry_price_cents: c.entryPriceCents,
+        weekly_goal: weeklyGoal,
+        is_closed_for_new_participants: closedForNewParticipants,
         status: computed_status,
         created_at: c.created_at,
         participantsCount: c.participants?.length || 0,
@@ -641,6 +697,13 @@ export class ChallengesService {
 
     if (!challenge) return { ok: false, reason: "not_found" as const };
 
+    // Após o início do desafio (a partir de 00:00 da data programada) o
+    // criador não pode mais excluí-lo.
+    const { startOfDay: startOfStartDay } = computeStartDayBoundaries(challenge);
+    if (new Date() >= startOfStartDay) {
+      return { ok: false, reason: "already_started" as const };
+    }
+
     const hasOtherParticipants = challenge.participants.some(
       (participant) => participant.userId !== userId
     );
@@ -676,6 +739,7 @@ export class ChallengesService {
         title: true,
         createdById: true,
         status: true,
+        startDate: true,
         participants: {
           select: {
             userId: true,
@@ -688,6 +752,12 @@ export class ChallengesService {
     if (challenge.createdById !== userId) return { ok: false as const, reason: "forbidden" as const };
     if (challenge.status === "cancelled") return { ok: false as const, reason: "already_cancelled" as const };
     if (challenge.status === "completed") return { ok: false as const, reason: "already_completed" as const };
+
+    // Após o início (00:00 da data programada), também bloqueia o cancelamento.
+    const { startOfDay: startOfStartDay } = computeStartDayBoundaries(challenge);
+    if (new Date() >= startOfStartDay) {
+      return { ok: false as const, reason: "already_started" as const };
+    }
 
     const participantIds = Array.from(
       new Set(
@@ -793,12 +863,16 @@ export class ChallengesService {
       };
     }
 
-    if (now >= challenge.startDate) {
+    // Novos participantes só podem entrar até o final do dia de início.
+    // Após o dia de início (00:00 do dia seguinte) o desafio é fechado para
+    // novas entradas, mantendo os já inscritos.
+    const { endOfDay: endOfStartDay } = computeStartDayBoundaries(challenge);
+    if (now > endOfStartDay) {
       return {
         requiresPayment: false,
         already: false,
         challengeStarted: true,
-        message: "Após o início do desafio não é permitida a entrada de novos participantes.",
+        message: "Após o dia de início, o desafio é fechado para novos participantes.",
       };
     }
 

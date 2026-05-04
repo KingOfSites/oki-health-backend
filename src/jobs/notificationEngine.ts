@@ -1,5 +1,6 @@
 import prisma from "../config/database";
 import { v4 as uuidv4 } from "uuid";
+import { parseWeeklyGoal } from "../services/challenges.service";
 
 // Simulando um banco de dados de 70+ mensagens separadas por horário
 const messages = {
@@ -32,6 +33,99 @@ const messages = {
 // Variável para manter o controle de quais horas já enviamos hoje
 let lastSentHour = -1;
 let lastSentDay = -1;
+let lastWeeklyDigestDay = -1;
+
+// PDF #12: o ciclo semanal (7 dias) é contabilizado a partir da data de
+// início do desafio, não do calendário civil. Esta função retorna o
+// índice da semana atual (0-based) e a janela [startOfWeek, endOfWeek)
+// correspondente ao período em que o usuário deve atingir a meta.
+export function computeChallengeWeekWindow(startDate: Date, reference: Date = new Date()) {
+  const start = new Date(startDate);
+  const startMs = start.getTime();
+  const refMs = reference.getTime();
+  if (Number.isNaN(startMs) || refMs < startMs) {
+    return null;
+  }
+  const dayMs = 24 * 60 * 60 * 1000;
+  const weekIndex = Math.floor((refMs - startMs) / (7 * dayMs));
+  const startOfWeek = new Date(startMs + weekIndex * 7 * dayMs);
+  const endOfWeek = new Date(startOfWeek.getTime() + 7 * dayMs);
+  return { weekIndex, startOfWeek, endOfWeek };
+}
+
+// PDF #11: dispara, uma vez por dia, uma notificação para cada participante
+// ativo informando quantos registros ainda faltam para bater a meta semanal
+// definida no desafio. Considera o ciclo semanal a partir do início (#12).
+async function sendWeeklyProgressNotifications() {
+  try {
+    const now = new Date();
+    const challenges = await prisma.challenge.findMany({
+      where: {
+        startDate: { lte: now },
+        endDate: { gte: now },
+        status: { not: "cancelled" },
+      },
+      select: {
+        id: true,
+        title: true,
+        startDate: true,
+        endDate: true,
+        frequency: true,
+      },
+    });
+
+    let totalSent = 0;
+
+    for (const challenge of challenges) {
+      const weeklyGoal = parseWeeklyGoal(challenge.frequency);
+      if (!weeklyGoal) continue;
+
+      const window = computeChallengeWeekWindow(challenge.startDate, now);
+      if (!window) continue;
+
+      const participants = await prisma.challengeParticipant.findMany({
+        where: { challengeId: challenge.id },
+        select: { userId: true },
+      });
+      if (participants.length === 0) continue;
+
+      for (const { userId } of participants) {
+        const verifiedThisWeek = await prisma.challengeChat.count({
+          where: {
+            challengeId: challenge.id,
+            userId,
+            verificationStatus: "verified",
+            verifiedAt: {
+              gte: window.startOfWeek,
+              lt: window.endOfWeek,
+            },
+          },
+        });
+
+        const remaining = Math.max(0, weeklyGoal - verifiedThisWeek);
+        if (remaining === 0) continue;
+
+        await prisma.notification.create({
+          data: {
+            id: uuidv4(),
+            userId,
+            challengeId: challenge.id,
+            title: `Meta semanal — ${challenge.title}`,
+            body: `Você tem ${remaining} ${remaining === 1 ? "registro" : "registros"} restantes para bater a meta da semana (${weeklyGoal}/semana).`,
+            type: "weekly_progress",
+          },
+        });
+        totalSent += 1;
+      }
+    }
+
+    if (totalSent > 0) {
+      console.log(`[Notification Engine] ${totalSent} alertas de meta semanal enviados.`);
+    }
+  } catch (error) {
+    console.error("[Notification Engine] Erro ao enviar progresso semanal:", error);
+  }
+}
 
 export const startNotificationEngine = () => {
   console.log("⏰ Notification Engine iniciada (verificação a cada minuto)");
@@ -56,7 +150,7 @@ export const startNotificationEngine = () => {
     if (isScheduledHour && lastSentHour !== actHour) {
       console.log(`[Notification Engine] Disparando notificações para a hora ${actHour}:00...`);
       lastSentHour = actHour; // Marca como enviado
-      
+
       try {
         let periodKey: "morning" | "afternoon" | "evening" = "morning";
         if (actHour === 15) periodKey = "afternoon";
@@ -90,12 +184,18 @@ export const startNotificationEngine = () => {
           });
 
           console.log(`[Notification Engine] ${notificationsData.length} notificações criadas com sucesso.`);
-          // Em um passo futuro, aqui também seria chamado o Firebase Admin `admin.messaging().sendMulticast(...)` 
+          // Em um passo futuro, aqui também seria chamado o Firebase Admin `admin.messaging().sendMulticast(...)`
           // caso a tabela User possuísse os tokens FCM (ex: fcmToken).
         }
       } catch (error) {
         console.error("[Notification Engine] Erro ao disparar notificações:", error);
       }
+    }
+
+    // PDF #11: alerta diário de progresso semanal (uma vez por dia, 19h).
+    if (actHour === 19 && lastWeeklyDigestDay !== actDay) {
+      lastWeeklyDigestDay = actDay;
+      await sendWeeklyProgressNotifications();
     }
   }, 60 * 1000); // 1 minuto
 };

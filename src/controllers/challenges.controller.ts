@@ -72,20 +72,35 @@ export class ChallengesController {
         endTime,
         isPublic,
         frequency,
+        weeklyFrequency,
+        trainStartTime,
+        trainEndTime,
         creatorParticipates,
         mode,
         prizeDistributionType,
         latitude,
         longitude,
       } = req.body;
+
+      // Modo "move" envia weeklyFrequency (número 2-7) em vez de frequency.
+      // Persistimos na coluna `frequency` (varchar) para reaproveitar o
+      // schema atual e expor a meta semanal nos cards/notificações.
+      const resolvedFrequency =
+        weeklyFrequency != null
+          ? String(weeklyFrequency)
+          : (frequency || "daily");
+
+      // Aceita campos alternativos vindos do app de criação (trainStartTime/trainEndTime).
+      const effectiveStartTime = startTime ?? trainStartTime;
+      const effectiveEndTime = endTime ?? trainEndTime;
       
       console.log("📥 [Create Challenge] Horários extraídos do body:", {
-        startTime,
-        endTime,
-        startTimeType: typeof startTime,
-        endTimeType: typeof endTime,
-        startTimeExists: startTime !== undefined,
-        endTimeExists: endTime !== undefined,
+        startTime: effectiveStartTime,
+        endTime: effectiveEndTime,
+        startTimeType: typeof effectiveStartTime,
+        endTimeType: typeof effectiveEndTime,
+        weeklyFrequency,
+        resolvedFrequency,
       });
 
       if (!title || !description || !category || !startDate || !endDate) {
@@ -157,11 +172,11 @@ export class ChallengesController {
       // Processar horários - garantir que sejam strings válidas ou null
       let processedStartTime: string | null = null;
       let processedEndTime: string | null = null;
-      
+
       // Se startTime foi fornecido, processar
-      if (startTime !== null && startTime !== undefined && startTime !== '') {
-        if (typeof startTime === 'string' && startTime.trim()) {
-          processedStartTime = startTime.trim();
+      if (effectiveStartTime !== null && effectiveStartTime !== undefined && effectiveStartTime !== '') {
+        if (typeof effectiveStartTime === 'string' && effectiveStartTime.trim()) {
+          processedStartTime = effectiveStartTime.trim();
           // Validar formato HH:MM
           if (!/^([0-1][0-9]|2[0-3]):([0-5][0-9])$/.test(processedStartTime)) {
             return res.status(400).json({
@@ -171,11 +186,11 @@ export class ChallengesController {
           }
         }
       }
-      
+
       // Se endTime foi fornecido, processar
-      if (endTime !== null && endTime !== undefined && endTime !== '') {
-        if (typeof endTime === 'string' && endTime.trim()) {
-          processedEndTime = endTime.trim();
+      if (effectiveEndTime !== null && effectiveEndTime !== undefined && effectiveEndTime !== '') {
+        if (typeof effectiveEndTime === 'string' && effectiveEndTime.trim()) {
+          processedEndTime = effectiveEndTime.trim();
           // Validar formato HH:MM
           if (!/^([0-1][0-9]|2[0-3]):([0-5][0-9])$/.test(processedEndTime)) {
             return res.status(400).json({
@@ -255,7 +270,7 @@ export class ChallengesController {
         requiredActivityLevel: requiredActivityLevel || null,
         isPublic: isPublicResolved,
         accessCode: isPublicResolved ? null : generateAccessCode(),
-        frequency: frequency || "daily",
+        frequency: resolvedFrequency,
         mode: mode || "activity",
         prizeDistributionType: prizeDistributionType || "integral",
         latitude: latitude != null ? parseFloat(latitude) : null,
@@ -312,12 +327,19 @@ static async searchChallenges(req: AuthRequest, res: Response, next: NextFunctio
             category: true,
             startDate: true,
             endDate: true,
+            startTime: true,
+            endTime: true,
             reward: true,
             location: true,
             coverUrl: true,
             entryPriceCents: true,
+            firstPlacePrizeCents: true,
+            secondPlacePrizeCents: true,
+            thirdPlacePrizeCents: true,
             created_at: true,
             isPublic: true,
+            frequency: true,
+            status: true,
             participants: {
               select: {
                 userId: true,
@@ -332,21 +354,40 @@ static async searchChallenges(req: AuthRequest, res: Response, next: NextFunctio
         return res.json({
           success: true,
           data: {
-            challenges: challenges.map((c) => ({
-              id: c.id,
-              title: c.title,
-              description: c.description,
-              category: c.category,
-              start_date: c.startDate,
-              end_date: c.endDate,
-              reward: c.reward,
-              location: c.location,
-              cover_url: c.coverUrl,
-              entry_price_cents: c.entryPriceCents,
-              participants_count: c.participants.length,
-              is_participant: userId ? c.participants.some((p) => p.userId === userId) : false,
-              is_private: c.isPublic === false,
-            })),
+            challenges: challenges.map((c) => {
+              const startDayBounds = (() => {
+                const start = new Date(c.startDate);
+                const y = start.getUTCFullYear();
+                const m = start.getUTCMonth();
+                const d = start.getUTCDate();
+                return new Date(y, m, d, 23, 59, 59, 999);
+              })();
+              const weeklyGoalMatch = c.frequency ? String(c.frequency).match(/\d+/) : null;
+              const weeklyGoal = weeklyGoalMatch ? parseInt(weeklyGoalMatch[0], 10) : null;
+
+              return {
+                id: c.id,
+                title: c.title,
+                description: c.description,
+                category: c.category,
+                start_date: c.startDate,
+                end_date: c.endDate,
+                start_time: c.startTime,
+                end_time: c.endTime,
+                reward: c.reward,
+                location: c.location,
+                cover_url: c.coverUrl,
+                entry_price_cents: c.entryPriceCents,
+                first_place_prize_cents: c.firstPlacePrizeCents,
+                second_place_prize_cents: c.secondPlacePrizeCents,
+                third_place_prize_cents: c.thirdPlacePrizeCents,
+                participants_count: c.participants.length,
+                is_participant: userId ? c.participants.some((p) => p.userId === userId) : false,
+                is_private: c.isPublic === false,
+                weekly_goal: weeklyGoal && weeklyGoal >= 1 && weeklyGoal <= 7 ? weeklyGoal : null,
+                is_closed_for_new_participants: new Date() > startDayBounds,
+              };
+            }),
           },
         });
       }
@@ -372,12 +413,19 @@ static async searchChallenges(req: AuthRequest, res: Response, next: NextFunctio
           category: true,
           startDate: true,
           endDate: true,
+          startTime: true,
+          endTime: true,
           reward: true,
           location: true,
           coverUrl: true,
           entryPriceCents: true,
+          firstPlacePrizeCents: true,
+          secondPlacePrizeCents: true,
+          thirdPlacePrizeCents: true,
           created_at: true,
           isPublic: true,
+          frequency: true,
+          status: true,
           participants: {
             select: {
               userId: true,
@@ -392,21 +440,39 @@ static async searchChallenges(req: AuthRequest, res: Response, next: NextFunctio
       return res.json({
         success: true,
         data: {
-          challenges: challenges.map((c) => ({
-            id: c.id,
-            title: c.title,
-            description: c.description,
-            category: c.category,
-            start_date: c.startDate,
-            end_date: c.endDate,
-            reward: c.reward,
-            location: c.location,
-            cover_url: c.coverUrl,
-            entry_price_cents: c.entryPriceCents,
-            participants_count: c.participants.length,
-            is_participant: userId ? c.participants.some((p) => p.userId === userId) : false,
-            is_private: c.isPublic === false,
-          })),
+          challenges: challenges.map((c) => {
+            const start = new Date(c.startDate);
+            const startDayEnd = new Date(
+              start.getUTCFullYear(),
+              start.getUTCMonth(),
+              start.getUTCDate(),
+              23, 59, 59, 999,
+            );
+            const weeklyGoalMatch = c.frequency ? String(c.frequency).match(/\d+/) : null;
+            const weeklyGoal = weeklyGoalMatch ? parseInt(weeklyGoalMatch[0], 10) : null;
+            return {
+              id: c.id,
+              title: c.title,
+              description: c.description,
+              category: c.category,
+              start_date: c.startDate,
+              end_date: c.endDate,
+              start_time: c.startTime,
+              end_time: c.endTime,
+              reward: c.reward,
+              location: c.location,
+              cover_url: c.coverUrl,
+              entry_price_cents: c.entryPriceCents,
+              first_place_prize_cents: c.firstPlacePrizeCents,
+              second_place_prize_cents: c.secondPlacePrizeCents,
+              third_place_prize_cents: c.thirdPlacePrizeCents,
+              participants_count: c.participants.length,
+              is_participant: userId ? c.participants.some((p) => p.userId === userId) : false,
+              is_private: c.isPublic === false,
+              weekly_goal: weeklyGoal && weeklyGoal >= 1 && weeklyGoal <= 7 ? weeklyGoal : null,
+              is_closed_for_new_participants: new Date() > startDayEnd,
+            };
+          }),
         },
       });
     } catch (error) {
@@ -591,6 +657,14 @@ static async searchChallenges(req: AuthRequest, res: Response, next: NextFunctio
             message: "Este desafio jÃ¡ foi cancelado",
           });
         }
+
+        if ((result as any).reason === "already_started") {
+          return res.status(409).json({
+            success: false,
+            challengeStarted: true,
+            message: "Após o início do desafio o criador não pode mais excluí-lo.",
+          });
+        }
       }
 
       if (result && typeof result === "object" && "ok" in result && !result.ok) {
@@ -670,6 +744,14 @@ static async searchChallenges(req: AuthRequest, res: Response, next: NextFunctio
           return res.status(409).json({
             success: false,
             message: "Este desafio jÃ¡ foi concluÃ­do e nÃ£o pode ser cancelado",
+          });
+        }
+
+        if (result.reason === "already_started") {
+          return res.status(409).json({
+            success: false,
+            challengeStarted: true,
+            message: "Após o início do desafio o criador não pode mais excluí-lo.",
           });
         }
       }

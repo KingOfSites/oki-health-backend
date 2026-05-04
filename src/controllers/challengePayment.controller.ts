@@ -528,6 +528,27 @@ export class ChallengePaymentController {
         });
       }
 
+      // Tratamento específico para PolicyAgent (risco / KYC / pagamento ao próprio dono da conta)
+      const isPolicyError =
+        err?.code === "PA_UNAUTHORIZED_RESULT_FROM_POLICIES" ||
+        err?.blocked_by === "PolicyAgent" ||
+        err?.cause?.[0]?.code === "PA_UNAUTHORIZED_RESULT_FROM_POLICIES";
+
+      if (isPolicyError) {
+        console.error("⚠️ [MP PolicyAgent] Pagamento bloqueado pelo Mercado Pago.");
+        console.error("   Possíveis causas:");
+        console.error("   - O comprador é o próprio dono da conta coletora (MP não permite pagamento a si mesmo)");
+        console.error("   - PIX não habilitado / chave PIX ausente no painel MP");
+        console.error("   - Conta MP em análise ou KYC incompleto");
+        console.error("   - Limite de risco / antifraude do MP");
+        return res.status(400).json({
+          success: false,
+          message:
+            "O Mercado Pago bloqueou esta transação. Verifique se a conta tem PIX habilitado e se o comprador é diferente do dono da conta coletora.",
+          errorCode: "PA_UNAUTHORIZED_RESULT_FROM_POLICIES",
+        });
+      }
+
       // Tratamento para outros erros do Mercado Pago
       if (err?.status === 400 || err?.response?.status === 400) {
         const mpError = err?.cause?.[0] || err?.response?.data;
@@ -536,6 +557,16 @@ export class ChallengePaymentController {
           message: mpError?.description || err?.message || "Erro ao processar pagamento no Mercado Pago",
           error: err?.message,
           errorCode: mpError?.code || "MP_ERROR",
+        });
+      }
+
+      // Repassa erros 403 do MP (PolicyAgent + outros) com mensagem clara
+      if (err?.status === 403 || err?.response?.status === 403) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Mercado Pago recusou esta transação. Confirme se a conta tem PIX habilitado e se o comprador é diferente do dono da conta coletora.",
+          errorCode: err?.code || "MP_FORBIDDEN",
         });
       }
 

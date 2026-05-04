@@ -104,13 +104,18 @@ export class ChallengesService {
     }
 
     const isCreator = challenge.createdById === userId;
-    const isParticipant = isCreator || challenge.participants.length > 0;
+    // PDF #3: precisamos diferenciar "criador (com ou sem participação)"
+    // de "participante puro". Para envio de imagem só vale o
+    // participante puro — criador nunca pode enviar foto.
+    const isParticipantOnly = challenge.participants.length > 0;
+    const isParticipant = isCreator || isParticipantOnly;
 
     return {
       exists: true as const,
       challenge,
       isCreator,
       isParticipant,
+      isParticipantOnly,
       isCancelled: challenge.status === "cancelled",
       isCompleted: challenge.status === "completed",
     };

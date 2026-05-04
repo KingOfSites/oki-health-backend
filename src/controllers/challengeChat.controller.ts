@@ -85,7 +85,8 @@ export class ChallengeChatController {
       // que tenha optado por "criar e observar" (sem entrar como
       // participante). Os demais usuários precisam ser participantes.
       const isCreator = membership.isCreator;
-      const canSendText = membership.isParticipant || isCreator;
+      const isParticipantOnly = (membership as any).isParticipantOnly === true;
+      const canSendText = isParticipantOnly || isCreator;
       if (!canSendText) {
         return res.status(403).json({
           error: "Apenas participantes podem enviar mensagens ou fotos no desafio",
@@ -113,11 +114,10 @@ export class ChallengeChatController {
         return res.status(404).json({ error: "Desafio não encontrado" });
       }
 
-      const isObserver = isCreator && !membership.isParticipant;
-
-      // PDF #3: criador (independente de participar ou não) só envia
-      // mensagens; observador também não pode enviar mídia.
-      if (mediaUrl && (isCreator || isObserver)) {
+      // PDF #3: criador NUNCA envia imagem (mesmo se entrou como
+      // participante via "criar e participar"). Apenas participantes que
+      // não são o criador podem enviar foto.
+      if (mediaUrl && (isCreator || !isParticipantOnly)) {
         const reason = isCreator
           ? "O criador do desafio pode enviar apenas mensagens, sem permissão para envio de imagens."
           : "Usuários no perfil de observador não podem enviar imagens ou fotografias.";

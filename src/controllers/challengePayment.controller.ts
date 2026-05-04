@@ -81,6 +81,25 @@ export class ChallengePaymentController {
         });
       }
 
+      // O criador é o organizador — nunca paga taxa de entrada do
+      // próprio desafio. Se chegou aqui, garantimos a participação
+      // direta (idempotente) e devolvemos sucesso sem chamar o MP.
+      if (challenge.createdById === userId) {
+        const existing = await prisma.challengeParticipant.findUnique({
+          where: { userId_challengeId: { userId, challengeId } },
+        });
+        if (!existing) {
+          await prisma.challengeParticipant.create({
+            data: { userId, challengeId, progress: 0, points: 0 },
+          });
+        }
+        return res.json({
+          success: true,
+          alreadyJoined: true,
+          message: "Você é o criador deste desafio e já está participando.",
+        });
+      }
+
       const entry = challenge.entryPriceCents ?? 0;
       const entryAmount = entry / 100; // valor de entrada em R$
       const amountWithFee = entryAmount; // Removida taxa fixa de R$ 15,00 conforme solicitação do usuário

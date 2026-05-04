@@ -998,7 +998,10 @@ export class ChallengesService {
     // Verificar se o desafio tem preço de entrada
     const entryPrice = challenge.entryPriceCents || 0;
 
-    if (entryPrice > 0) {
+    // O criador é o organizador do desafio — nunca paga a taxa de entrada.
+    const isOwnChallenge = challenge.createdById === userId;
+
+    if (entryPrice > 0 && !isOwnChallenge) {
       // Verificar se já existe pagamento aprovado
       const paidTransaction = await prisma.transaction.findFirst({
         where: {

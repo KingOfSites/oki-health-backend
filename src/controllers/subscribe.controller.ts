@@ -242,6 +242,23 @@ export class SubscribeController {
           });
         }
 
+        // PolicyAgent / 403: pagador == dono da conta MP, conta em análise, etc.
+        const isPolicyError =
+          paymentError?.code === "PA_UNAUTHORIZED_RESULT_FROM_POLICIES" ||
+          paymentError?.blocked_by === "PolicyAgent" ||
+          paymentError?.cause?.[0]?.code === "PA_UNAUTHORIZED_RESULT_FROM_POLICIES" ||
+          paymentError?.status === 403 ||
+          /policy.*UNAUTHORIZED/i.test(paymentError?.message || "");
+
+        if (isPolicyError) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "O Mercado Pago bloqueou esta transação (PolicyAgent). Possíveis causas: o pagador é o próprio dono da conta coletora, a conta MP está em análise/KYC pendente, ou o cartão usado pertence ao mesmo titular da conta MP. Tente com outro usuário/cartão.",
+            errorCode: "PA_UNAUTHORIZED_RESULT_FROM_POLICIES",
+          });
+        }
+
         return res.status(400).json({
           success: false,
           message:

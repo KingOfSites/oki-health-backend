@@ -696,6 +696,25 @@ export class SubscribeController {
       if (error?.error) console.error("❌ MP error body:", JSON.stringify(error.error, null, 2));
       if (error?.response) console.error("❌ MP response:", JSON.stringify(error.response, null, 2));
       console.error("❌ ==============================================");
+
+      // PolicyAgent / 403: comprador == dono da conta MP, PIX não habilitado
+      // ou conta em análise. Retornamos 400 com mensagem clara em vez de 500.
+      const isPolicyError =
+        error?.code === "PA_UNAUTHORIZED_RESULT_FROM_POLICIES" ||
+        error?.blocked_by === "PolicyAgent" ||
+        error?.cause?.[0]?.code === "PA_UNAUTHORIZED_RESULT_FROM_POLICIES" ||
+        error?.status === 403 ||
+        /policy.*UNAUTHORIZED/i.test(error?.message || "");
+
+      if (isPolicyError) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "O Mercado Pago bloqueou esta transação. Verifique se a conta tem PIX habilitado e se o pagador é diferente do dono da conta coletora.",
+          errorCode: "PA_UNAUTHORIZED_RESULT_FROM_POLICIES",
+        });
+      }
+
       return res.status(500).json({
         success: false,
         message: "Erro ao gerar PIX.",

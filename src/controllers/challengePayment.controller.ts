@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import prisma from "../config/database";
 import { MercadoPagoConfig, Payment, CardToken } from "mercadopago";
 import { ChallengesService } from "../services/challenges.service";
+import { ADMIN_FEE_RATE, computeAdminFeeFromReais } from "../utils/adminFee";
 
 // ======================================================
 // 🔑 CONFIG MERCADO PAGO - APENAS PRODUÇÃO
@@ -103,6 +104,16 @@ export class ChallengePaymentController {
       const entry = challenge.entryPriceCents ?? 0;
       const entryAmount = entry / 100; // valor de entrada em R$
       const amountWithFee = entryAmount; // Removida taxa fixa de R$ 15,00 conforme solicitação do usuário
+
+      // PDF (Maio/2026 #8): taxa administrativa de 25% sobre todos os
+      // pagamentos. O usuário paga o valor cheio (entryAmount); 25% ficam
+      // com a Oki Health e 75% compõem o pool de prêmios.
+      const adminFeeBreakdown = computeAdminFeeFromReais(entryAmount);
+      const adminFeeAmount = adminFeeBreakdown.feeReais;
+      const netAmountAfterFee = adminFeeBreakdown.netReais;
+      const adminFeeDescription = `Taxa administrativa Oki Health (${Math.round(
+        ADMIN_FEE_RATE * 100,
+      )}%) — Entrada no desafio: ${challenge.title}`;
 
       // ======================================================
       // 🔒 VERIFICAR SE JÁ EXISTE PAGAMENTO APROVADO E SE ESTÁ PARTICIPANDO
@@ -208,7 +219,9 @@ export class ChallengePaymentController {
             transaction = existingTransaction;
             console.log(`📝 [Wallet Payment - Transaction] Usando transação existente: ID ${transaction.id}`);
           } else {
-            // Se não existe, criar nova transação
+            // Se não existe, criar nova transação (entrada cheia, com a
+            // taxa administrativa discriminada no description e em uma
+            // transação separada do tipo platform_fee).
             transaction = await tx.transaction.create({
               data: {
                 userId,
@@ -216,10 +229,26 @@ export class ChallengePaymentController {
                 type: "challenge_entry",
                 amount: entryAmount,
                 status: "approved",
-                description: `Entrada no desafio: ${challenge.title}`,
+                description: `Entrada no desafio: ${challenge.title} (R$ ${entryAmount.toFixed(2)} = R$ ${netAmountAfterFee.toFixed(2)} pool de prêmios + R$ ${adminFeeAmount.toFixed(2)} taxa Oki Health ${Math.round(
+                  ADMIN_FEE_RATE * 100,
+                )}%)`,
               },
             });
             console.log(`📝 [Wallet Payment - Transaction] Transação criada: ID ${transaction.id}, Valor: R$ ${transaction.amount.toFixed(2)}, Status: ${transaction.status}`);
+
+            // PDF (Maio/2026 #8): registro financeiro separado da taxa.
+            if (adminFeeAmount > 0) {
+              await tx.transaction.create({
+                data: {
+                  userId,
+                  challengeId,
+                  type: "platform_fee",
+                  amount: adminFeeAmount,
+                  status: "approved",
+                  description: adminFeeDescription,
+                },
+              });
+            }
           }
 
           // Debitar da carteira apenas o valor de entrada (sem taxa)
@@ -356,7 +385,9 @@ export class ChallengePaymentController {
             status: "pending",
             type: "challenge_entry",
             amount: amountWithFee,
-            description: `Entrada no desafio: ${challenge.title}`,
+            description: `Entrada no desafio: ${challenge.title} (taxa Oki Health ${Math.round(
+              ADMIN_FEE_RATE * 100,
+            )}% = R$ ${adminFeeAmount.toFixed(2)}; pool = R$ ${netAmountAfterFee.toFixed(2)})`,
           },
         });
 
@@ -366,6 +397,12 @@ export class ChallengePaymentController {
           qrCode: payment.point_of_interaction?.transaction_data?.qr_code,
           qrCodeBase64:
             payment.point_of_interaction?.transaction_data?.qr_code_base64,
+          adminFee: {
+            rate: ADMIN_FEE_RATE,
+            amount: adminFeeAmount,
+            netAmount: netAmountAfterFee,
+            description: adminFeeDescription,
+          },
         });
       }
 
@@ -459,7 +496,9 @@ export class ChallengePaymentController {
             status: payment.status,
             type: "challenge_entry",
             amount: amountWithFee,
-            description: `Entrada no desafio: ${challenge.title}`,
+            description: `Entrada no desafio: ${challenge.title} (taxa Oki Health ${Math.round(
+              ADMIN_FEE_RATE * 100,
+            )}% = R$ ${adminFeeAmount.toFixed(2)}; pool = R$ ${netAmountAfterFee.toFixed(2)})`,
           },
         });
 
@@ -468,6 +507,20 @@ export class ChallengePaymentController {
           await prisma.challengeParticipant.create({
             data: { userId, challengeId, progress: 0, points: 0 },
           });
+
+          // PDF (Maio/2026 #8): registro financeiro separado da taxa.
+          if (adminFeeAmount > 0) {
+            await prisma.transaction.create({
+              data: {
+                userId,
+                challengeId,
+                type: "platform_fee",
+                amount: adminFeeAmount,
+                status: "approved",
+                description: adminFeeDescription,
+              },
+            });
+          }
 
           // Comissão de afiliado (se aplicável)
           try {
@@ -655,6 +708,28 @@ export class ChallengePaymentController {
           points: 0,
         },
       });
+
+      // PDF (Maio/2026 #8): registrar a taxa administrativa também na
+      // confirmação do PIX (origem o valor cheio da transação).
+      try {
+        const { feeReais } = computeAdminFeeFromReais(transaction.amount || 0);
+        if (feeReais > 0) {
+          await prisma.transaction.create({
+            data: {
+              userId: transaction.userId,
+              challengeId: transaction.challengeId!,
+              type: "platform_fee",
+              amount: feeReais,
+              status: "approved",
+              description: `Taxa administrativa Oki Health (${Math.round(
+                ADMIN_FEE_RATE * 100,
+              )}%) — Entrada via PIX confirmado #${transaction.id}`,
+            },
+          });
+        }
+      } catch (feeErr) {
+        console.error("[challenge-payment] Falha ao registrar taxa administrativa:", feeErr);
+      }
 
       // Comissão de afiliado (se aplicável) — confirmação PIX
       try {

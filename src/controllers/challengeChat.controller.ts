@@ -42,12 +42,23 @@ export class ChallengeChatController {
         },
       });
 
-      return res.json({
-        data: messages.map((msg) => {
-          // PDF #1: imagens rejeitadas são removidas do chat. Mantemos a
-          // mensagem (com texto, se houver) e o status para que o autor
-          // ainda receba o aviso/modal.
+      // PDF (Maio/2026 #3): imagens rejeitadas são removidas do chat
+      // imediatamente e o motivo é exibido somente ao próprio autor da
+      // mensagem, em um modal. Para os demais participantes, a mensagem
+      // (quando só tinha imagem) é totalmente omitida e qualquer indício
+      // de rejeição (status, motivo, badge) é suprimido.
+      const sanitized = messages
+        .map((msg) => {
           const isRejected = msg.imageUrl && msg.verificationStatus === "rejected";
+          const isAuthor = msg.userId === userId;
+
+          // Mensagens cujo conteúdo principal era imagem rejeitada:
+          // exibimos só para o autor. Se a msg tinha texto além da imagem,
+          // mantemos o texto para outros (mas sem nenhum dado de rejeição).
+          if (isRejected && !isAuthor && (!msg.message || !msg.message.trim())) {
+            return null;
+          }
+
           return {
             id: msg.id,
             userId: msg.userId,
@@ -55,14 +66,18 @@ export class ChallengeChatController {
             avatar_url: msg.user.avatar_url ?? null,
             message: msg.message,
             imageUrl: isRejected ? null : (msg.imageUrl ?? null),
-            wasImageRejected: Boolean(isRejected),
+            wasImageRejected: Boolean(isRejected && isAuthor),
             created_at: msg.created_at,
-            verificationStatus: msg.imageUrl ? (msg.verificationStatus ?? "pending") : null,
-            verifiedAt: msg.verifiedAt ?? null,
-            verificationReason: msg.verificationReason ?? null,
+            verificationStatus: isAuthor
+              ? (msg.imageUrl ? (msg.verificationStatus ?? "pending") : null)
+              : (isRejected ? null : (msg.imageUrl ? (msg.verificationStatus ?? "pending") : null)),
+            verifiedAt: isAuthor ? (msg.verifiedAt ?? null) : null,
+            verificationReason: isAuthor ? (msg.verificationReason ?? null) : null,
           };
-        }),
-      });
+        })
+        .filter((m): m is NonNullable<typeof m> => m !== null);
+
+      return res.json({ data: sanitized });
     } catch (err: any) {
       console.error("[Chat] Erro ao carregar mensagens:", err);
       return res.status(500).json({ error: "Erro ao carregar mensagens" });

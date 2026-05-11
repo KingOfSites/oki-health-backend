@@ -144,6 +144,7 @@ export class ChallengesService {
             createdById: true,
             isPublic: true,
             frequency: true,
+            durationWeeks: true,
           },
         },
       },
@@ -185,6 +186,8 @@ export class ChallengesService {
         cover_url: r.challenge.coverUrl || null,
         entry_price_cents: r.challenge.entryPriceCents,
         weekly_goal: weeklyGoal,
+        duration_weeks: (r.challenge as any).durationWeeks ?? null,
+        durationWeeks: (r.challenge as any).durationWeeks ?? null,
         is_closed_for_new_participants: closedForNewParticipants,
         created_by_id: r.challenge.createdById,
         creator_id: r.challenge.createdById,
@@ -230,6 +233,7 @@ export class ChallengesService {
         createdById: true,
         isPublic: true,
         frequency: true,
+        durationWeeks: true,
         participants: {
           select: {
             id: true,
@@ -271,6 +275,8 @@ export class ChallengesService {
         cover_url: c.coverUrl,
         entry_price_cents: c.entryPriceCents,
         weekly_goal: weeklyGoal,
+        duration_weeks: (c as any).durationWeeks ?? null,
+        durationWeeks: (c as any).durationWeeks ?? null,
         is_closed_for_new_participants: closedForNewParticipants,
         created_by_id: c.createdById,
         creator_id: c.createdById,
@@ -319,6 +325,7 @@ export class ChallengesService {
         isPublic: true,
         accessCode: true,
         frequency: true,
+        durationWeeks: true,
         participants: {
           select: {
             userId: true,
@@ -367,6 +374,8 @@ export class ChallengesService {
         computed_status,
         is_public: challenge.isPublic,
         weekly_goal: weeklyGoal,
+        duration_weeks: (challenge as any).durationWeeks ?? null,
+        durationWeeks: (challenge as any).durationWeeks ?? null,
         is_closed_for_new_participants: closedForNewParticipants,
         // Só expõe o código para o criador (privacidade)
         access_code: is_creator ? challenge.accessCode : null,
@@ -429,6 +438,7 @@ export class ChallengesService {
         createdById: true,
         isPublic: true,
         frequency: true,
+        durationWeeks: true,
         participants: {
           select: {
             userId: true,
@@ -457,6 +467,8 @@ export class ChallengesService {
         cover_url: c.coverUrl,
         entry_price_cents: c.entryPriceCents,
         weekly_goal: weeklyGoal,
+        duration_weeks: (c as any).durationWeeks ?? null,
+        durationWeeks: (c as any).durationWeeks ?? null,
         is_closed_for_new_participants: closedForNewParticipants,
         status: computed_status,
         created_at: c.created_at,
@@ -549,6 +561,7 @@ export class ChallengesService {
       prizeDistributionType: challengeData.prizeDistributionType || "integral",
       latitude: challengeData.latitude || null,
       longitude: challengeData.longitude || null,
+      durationWeeks: challengeData.durationWeeks != null ? challengeData.durationWeeks : null,
     };
     
     // Garantir explicitamente que startTime e endTime estejam no objeto
@@ -632,6 +645,7 @@ export class ChallengesService {
       "latitude",
       "longitude",
       "maxParticipants",
+      "durationWeeks",
     ];
 
     for (const field of directFields) {
@@ -877,7 +891,7 @@ export class ChallengesService {
         requiresPayment: false,
         already: false,
         challengeStarted: true,
-        message: "Após o dia de início, o desafio é fechado para novos participantes.",
+        message: "Desafio já iniciado. Não é permitido a entrada de novos participantes.",
       };
     }
 

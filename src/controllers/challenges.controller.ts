@@ -80,6 +80,7 @@ export class ChallengesController {
         prizeDistributionType,
         latitude,
         longitude,
+        durationWeeks,
       } = req.body;
 
       // Modo "move" envia weeklyFrequency (número 2-7) em vez de frequency.
@@ -275,6 +276,10 @@ export class ChallengesController {
         prizeDistributionType: prizeDistributionType || "integral",
         latitude: latitude != null ? parseFloat(latitude) : null,
         longitude: longitude != null ? parseFloat(longitude) : null,
+        // PDF #1: persistir a duração escolhida pelo usuário para garantir
+        // que o valor exibido em todas as telas reflita exatamente o que
+        // foi selecionado, sem depender de cálculos a partir de start/end.
+        durationWeeks: durationWeeks != null ? parseInt(durationWeeks) : null,
       };
       challengePayload.creatorParticipates = creatorParticipates !== false;
       
@@ -339,6 +344,7 @@ static async searchChallenges(req: AuthRequest, res: Response, next: NextFunctio
             created_at: true,
             isPublic: true,
             frequency: true,
+            durationWeeks: true,
             status: true,
             participants: {
               select: {
@@ -385,6 +391,8 @@ static async searchChallenges(req: AuthRequest, res: Response, next: NextFunctio
                 is_participant: userId ? c.participants.some((p) => p.userId === userId) : false,
                 is_private: c.isPublic === false,
                 weekly_goal: weeklyGoal && weeklyGoal >= 1 && weeklyGoal <= 7 ? weeklyGoal : null,
+                duration_weeks: (c as any).durationWeeks ?? null,
+                durationWeeks: (c as any).durationWeeks ?? null,
                 is_closed_for_new_participants: new Date() > startDayBounds,
               };
             }),
@@ -470,6 +478,8 @@ static async searchChallenges(req: AuthRequest, res: Response, next: NextFunctio
               is_participant: userId ? c.participants.some((p) => p.userId === userId) : false,
               is_private: c.isPublic === false,
               weekly_goal: weeklyGoal && weeklyGoal >= 1 && weeklyGoal <= 7 ? weeklyGoal : null,
+              duration_weeks: (c as any).durationWeeks ?? null,
+              durationWeeks: (c as any).durationWeeks ?? null,
               is_closed_for_new_participants: new Date() > startDayEnd,
             };
           }),
@@ -528,7 +538,7 @@ static async searchChallenges(req: AuthRequest, res: Response, next: NextFunctio
         return res.status(400).json({
           success: false,
           challengeStarted: true,
-          message: (result as any).message || "Após o início do desafio não é permitida a entrada de novos participantes.",
+          message: (result as any).message || "Desafio já iniciado. Não é permitido a entrada de novos participantes.",
         });
       }
 

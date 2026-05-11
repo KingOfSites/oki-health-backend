@@ -17,7 +17,9 @@
     "check:port": "node scripts/check-port.js",
     "add:resources": "tsx scripts/add-resources.ts",
     "remove:participant": "tsx src/scripts/remove-participant.ts",
-    "wallet:set-balance": "tsx src/scripts/set-wallet-balance.ts"
+    "wallet:set-balance": "tsx src/scripts/set-wallet-balance.ts",
+    "test:financial": "tsx src/scripts/test-financial-distribution.ts",
+    "test:pix": "tsx src/scripts/test-pix-withdrawal.ts"
   },
   "keywords": [
     "oki",

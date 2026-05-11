@@ -185,7 +185,9 @@ export class PrizeDistributionService {
         }
       }
 
-      // 5% para criador PRO (se houver prêmio)
+      // PDF (Maio/2026 #9): 5% para o criador Premium ao final do desafio
+      // concluído. O campo `isPro` permanece no schema mas representa o
+      // plano Premium da nova estrutura (Free / Premium / Afiliado).
       if (totalPrizeCents > 0) {
         const creator = await tx.user.findUnique({
           where: { id: challenge.createdById },
@@ -196,10 +198,10 @@ export class PrizeDistributionService {
           const creatorAmount = creatorShareCents / 100;
           await creditPrizeIfMissing({
             userId: challenge.createdById,
-            userName: "Criador (PRO)",
+            userName: "Criador (Premium)",
             amount: creatorAmount,
             type: "challenge_creator_fee",
-            description: `5% criador PRO - ${challenge.title}`,
+            description: `5% retorno Premium - ${challenge.title}`,
             position: 0,
             isCreatorFee: true,
           });

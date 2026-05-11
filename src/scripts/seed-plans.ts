@@ -1,125 +1,78 @@
 import "dotenv/config";
 import prisma from "../config/database";
 
+// PDF (Maio/2026 #9): A plataforma deve contemplar APENAS os planos abaixo.
+// O plano "PRO" foi removido — todos os textos/seeds passam a referenciar
+// somente Free, Premium e Afiliado.
 async function main() {
   console.log("🌱 Iniciando seed de planos...");
 
-  // Criar ou atualizar plano Premium Mensal
-  const existingMonthly = await prisma.plan.findFirst({
-    where: { name: "Premium Mensal" },
-  });
-
-  const monthlyPlan = existingMonthly
+  // FREE — acesso básico
+  const freeExisting = await prisma.plan.findFirst({ where: { name: "Free" } });
+  const freePlan = freeExisting
     ? await prisma.plan.update({
-        where: { id: existingMonthly.id },
+        where: { id: freeExisting.id },
         data: {
-          price: 19.90,
-          benefits: "Grupos ilimitados, Desafios exclusivos, Estatísticas avançadas, Notificações inteligentes, Acesso antecipado",
+          price: 0,
+          benefits: "Acesso básico às funcionalidades da plataforma",
         },
       })
     : await prisma.plan.create({
         data: {
-          name: "Premium Mensal",
-          price: 19.90,
-          benefits: "Grupos ilimitados, Desafios exclusivos, Estatísticas avançadas, Notificações inteligentes, Acesso antecipado",
+          name: "Free",
+          price: 0,
+          benefits: "Acesso básico às funcionalidades da plataforma",
         },
       });
+  console.log("✅ Plano Free criado/atualizado:", freePlan);
 
-  console.log("✅ Plano Premium Mensal criado/atualizado:", monthlyPlan);
-
-  // Criar ou atualizar plano Premium Anual (opcional - 12x o valor mensal com desconto)
-  const annualPrice = 19.90 * 12 * 0.85; // 15% de desconto
-  const existingAnnual = await prisma.plan.findFirst({
-    where: { name: "Premium Anual" },
-  });
-
-  const annualPlan = existingAnnual
+  // PREMIUM — 5% por desafio concluído + features adicionais + extrato
+  const premiumExisting = await prisma.plan.findFirst({ where: { name: "Premium" } });
+  const premiumBenefits =
+    "5% de retorno sobre cada desafio concluído, " +
+    "funcionalidades adicionais para criação de desafios, " +
+    "ganhos creditados automaticamente na carteira, " +
+    "extrato detalhado dos ganhos dentro da wallet";
+  const premiumPlan = premiumExisting
     ? await prisma.plan.update({
-        where: { id: existingAnnual.id },
-        data: {
-          price: annualPrice,
-          benefits: "Todos os benefícios do Premium Mensal + 15% de desconto",
-        },
+        where: { id: premiumExisting.id },
+        data: { price: 19.9, benefits: premiumBenefits },
       })
     : await prisma.plan.create({
-        data: {
-          name: "Premium Anual",
-          price: annualPrice,
-          benefits: "Todos os benefícios do Premium Mensal + 15% de desconto",
-        },
+        data: { name: "Premium", price: 19.9, benefits: premiumBenefits },
       });
+  console.log("✅ Plano Premium criado/atualizado:", premiumPlan);
 
-  console.log("✅ Plano Premium Anual criado/atualizado:", annualPlan);
-
-  // Plano Pro Mensal
-  const proMonthlyPrice = 29.90;
-  const proMonthlyBenefits =
-    "Tudo do Premium + Comissão 5% por desafio + Prioridade no suporte";
-  const existingProMonthly = await prisma.plan.findFirst({
-    where: { name: "Pro Mensal" },
-  });
-
-  const proMonthlyPlan = existingProMonthly
-    ? await prisma.plan.update({
-        where: { id: existingProMonthly.id },
-        data: { price: proMonthlyPrice, benefits: proMonthlyBenefits },
-      })
-    : await prisma.plan.create({
-        data: {
-          name: "Pro Mensal",
-          price: proMonthlyPrice,
-          benefits: proMonthlyBenefits,
-        },
-      });
-
-  console.log("✅ Plano Pro Mensal criado/atualizado:", proMonthlyPlan);
-
-  // Plano Pro Anual (15% de desconto)
-  const proAnnualPrice = proMonthlyPrice * 12 * 0.85;
-  const existingProAnnual = await prisma.plan.findFirst({
-    where: { name: "Pro Anual" },
-  });
-
-  const proAnnualPlan = existingProAnnual
-    ? await prisma.plan.update({
-        where: { id: existingProAnnual.id },
-        data: {
-          price: proAnnualPrice,
-          benefits: "Todos os benefícios do Pro Mensal + 15% de desconto",
-        },
-      })
-    : await prisma.plan.create({
-        data: {
-          name: "Pro Anual",
-          price: proAnnualPrice,
-          benefits: "Todos os benefícios do Pro Mensal + 15% de desconto",
-        },
-      });
-
-  console.log("✅ Plano Pro Anual criado/atualizado:", proAnnualPlan);
-
-  // Plano Afiliado
-  const afiliadoPrice = 49.90;
+  // AFILIADO — 15% de comissão por conversão + painel de estatísticas
+  const afiliadoExisting = await prisma.plan.findFirst({ where: { name: "Afiliado" } });
   const afiliadoBenefits =
-    "Tudo do Pro + Programa de afiliados + Comissão extra por indicação";
-  const existingAfiliado = await prisma.plan.findFirst({
-    where: { name: "Afiliado" },
-  });
-
-  const afiliadoPlan = existingAfiliado
+    "15% de comissão por cada conversão realizada, " +
+    "painel com estatísticas de desempenho (conversões, valores gerados)";
+  const afiliadoPlan = afiliadoExisting
     ? await prisma.plan.update({
-        where: { id: existingAfiliado.id },
-        data: { price: afiliadoPrice, benefits: afiliadoBenefits },
+        where: { id: afiliadoExisting.id },
+        data: { price: 49.9, benefits: afiliadoBenefits },
       })
     : await prisma.plan.create({
-        data: {
-          name: "Afiliado",
-          price: afiliadoPrice,
-          benefits: afiliadoBenefits,
-        },
+        data: { name: "Afiliado", price: 49.9, benefits: afiliadoBenefits },
       });
-
   console.log("✅ Plano Afiliado criado/atualizado:", afiliadoPlan);
+
+  // PDF (Maio/2026 #9): remover quaisquer planos legados ("Pro Mensal",
+  // "Pro Anual", "Premium Mensal", "Premium Anual").
+  const legacyNames = ["Pro Mensal", "Pro Anual", "Premium Mensal", "Premium Anual"];
+  for (const name of legacyNames) {
+    const legacy = await prisma.plan.findFirst({ where: { name } });
+    if (legacy) {
+      // Move assinaturas ativas para Premium antes de remover o legado.
+      await prisma.planSubscription.updateMany({
+        where: { planId: legacy.id },
+        data: { planId: premiumPlan.id },
+      });
+      await prisma.plan.delete({ where: { id: legacy.id } });
+      console.log(`🗑️  Plano legado removido: ${name}`);
+    }
+  }
 
   console.log("🎉 Seed de planos concluído com sucesso!");
 }
@@ -132,4 +85,3 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
-

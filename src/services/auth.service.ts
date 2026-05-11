@@ -52,6 +52,26 @@ export interface AuthResponse {
     updated_at: Date;
   };
   token: string;
+  // PDF (Maio/2026 #12): sinaliza ao cliente que o usuário precisa
+  // complementar os dados pessoais obrigatórios. Presente apenas em
+  // respostas de social login; opcional para manter compatibilidade.
+  requiresProfileCompletion?: boolean;
+}
+
+// PDF (Maio/2026 #12): após autenticação via Google/Facebook/Apple, o
+// usuário deve completar o cadastro caso não tenha os dados obrigatórios.
+// Centralizamos aqui a regra para que todos os endpoints sociais retornem
+// `requiresProfileCompletion` de forma consistente.
+function isProfileIncomplete(user: any): boolean {
+  if (!user) return true;
+  const missing =
+    user.age == null ||
+    !user.city ||
+    !user.sexo ||
+    user.peso == null ||
+    user.altura == null ||
+    !user.atividade;
+  return missing;
 }
 
 export class AuthService {
@@ -241,6 +261,9 @@ export class AuthService {
 
     return {
       isNew,
+      // PDF (Maio/2026 #12): sinaliza ao app se o usuário precisa
+      // completar dados obrigatórios após o social login.
+      requiresProfileCompletion: isProfileIncomplete(user),
       token,
       user: {
         id: user.id,
@@ -309,6 +332,9 @@ export class AuthService {
 
     return {
       isNew,
+      // PDF (Maio/2026 #12): sinaliza ao app se o usuário precisa
+      // completar dados obrigatórios após o social login.
+      requiresProfileCompletion: isProfileIncomplete(user),
       token,
       user: {
         id: user.id,
@@ -408,6 +434,9 @@ export class AuthService {
 
     return {
       isNew,
+      // PDF (Maio/2026 #12): sinaliza ao app se o usuário precisa
+      // completar dados obrigatórios após o social login.
+      requiresProfileCompletion: isProfileIncomplete(user),
       token,
       user: {
         id: user.id,
@@ -513,6 +542,9 @@ export class AuthService {
 
     return {
       isNew,
+      // PDF (Maio/2026 #12): sinaliza ao app se o usuário precisa
+      // completar dados obrigatórios após o social login.
+      requiresProfileCompletion: isProfileIncomplete(user),
       token,
       user: {
         id: user.id,
@@ -662,6 +694,9 @@ export class AuthService {
 
     return {
       isNew,
+      // PDF (Maio/2026 #12): sinaliza ao app se o usuário precisa
+      // completar dados obrigatórios após o social login.
+      requiresProfileCompletion: isProfileIncomplete(user),
       token,
       user: {
         id: user.id,

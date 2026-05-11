@@ -11,11 +11,11 @@ export class SubscribeService {
     // ❌ Removido: campo "plan" não existe no Prisma
     // await prisma.user.update({ ... })
 
-    // Encontrar plano correto:
-    const planName = planType === "annual" ? "Premium Anual" : "Premium Mensal";
-    const plan = await prisma.plan.findFirst({ where: { name: planName } });
+    // PDF (Maio/2026 #9): apenas o plano "Premium" existe (sem variações
+    // mensal/anual nomeadas separadamente — a duração é tratada via endDate).
+    const plan = await prisma.plan.findFirst({ where: { name: "Premium" } });
 
-    if (!plan) throw new Error("Plano não encontrado");
+    if (!plan) throw new Error("Plano Premium não encontrado");
 
     await prisma.planSubscription.upsert({
       where: { userId },

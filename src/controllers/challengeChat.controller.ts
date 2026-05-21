@@ -43,21 +43,24 @@ export class ChallengeChatController {
       });
 
       // PDF (Maio/2026 #3): imagens rejeitadas são removidas do chat
-      // imediatamente e o motivo é exibido somente ao próprio autor da
-      // mensagem, em um modal. Para os demais participantes, a mensagem
-      // (quando só tinha imagem) é totalmente omitida e qualquer indício
-      // de rejeição (status, motivo, badge) é suprimido.
+      // imediatamente para TODOS (incluindo o autor). O motivo da rejeição
+      // é entregue ao autor exclusivamente pelo endpoint
+      // getPendingRejections, que dispara um modal único. Após confirmar,
+      // a mensagem some por completo do chat.
       const sanitized = messages
         .map((msg) => {
           const isRejected = msg.imageUrl && msg.verificationStatus === "rejected";
-          const isAuthor = msg.userId === userId;
+          const hasText = msg.message && msg.message.trim();
 
-          // Mensagens cujo conteúdo principal era imagem rejeitada:
-          // exibimos só para o autor. Se a msg tinha texto além da imagem,
-          // mantemos o texto para outros (mas sem nenhum dado de rejeição).
-          if (isRejected && !isAuthor && (!msg.message || !msg.message.trim())) {
+          // Mensagem só-imagem rejeitada some do chat para todos.
+          if (isRejected && !hasText) {
             return null;
           }
+
+          // Mensagem com texto + imagem rejeitada: mantém texto, remove imagem.
+          const verificationStatus = isRejected
+            ? null
+            : (msg.imageUrl ? (msg.verificationStatus ?? "pending") : null);
 
           return {
             id: msg.id,
@@ -66,13 +69,11 @@ export class ChallengeChatController {
             avatar_url: msg.user.avatar_url ?? null,
             message: msg.message,
             imageUrl: isRejected ? null : (msg.imageUrl ?? null),
-            wasImageRejected: Boolean(isRejected && isAuthor),
+            wasImageRejected: false,
             created_at: msg.created_at,
-            verificationStatus: isAuthor
-              ? (msg.imageUrl ? (msg.verificationStatus ?? "pending") : null)
-              : (isRejected ? null : (msg.imageUrl ? (msg.verificationStatus ?? "pending") : null)),
-            verifiedAt: isAuthor ? (msg.verifiedAt ?? null) : null,
-            verificationReason: isAuthor ? (msg.verificationReason ?? null) : null,
+            verificationStatus,
+            verifiedAt: isRejected ? null : (msg.verifiedAt ?? null),
+            verificationReason: null,
           };
         })
         .filter((m): m is NonNullable<typeof m> => m !== null);
@@ -254,6 +255,60 @@ export class ChallengeChatController {
     } catch (err) {
       console.error("[Chat] Erro ao enviar mensagem:", err);
       return res.status(500).json({ error: "Erro ao enviar mensagem" });
+    }
+  }
+
+  // PDF (Maio/2026 #3): rejeições do próprio usuário ainda não confirmadas.
+  // O front consome esta lista para mostrar o modal uma única vez por
+  // mensagem, mesmo entre sessões/devices.
+  static async getPendingRejections(req: Request, res: Response) {
+    try {
+      const userId = (req as any).userId;
+      const { challengeId } = req.params;
+
+      const pending = await prisma.challengeChat.findMany({
+        where: {
+          challengeId,
+          userId,
+          verificationStatus: "rejected",
+          rejectionAcknowledgedAt: null,
+        },
+        orderBy: { created_at: "asc" },
+        select: { id: true, verificationReason: true, created_at: true },
+      });
+
+      return res.json({
+        data: pending.map((p) => ({
+          messageId: p.id,
+          reason: p.verificationReason,
+          created_at: p.created_at,
+        })),
+      });
+    } catch (err) {
+      console.error("[Chat] Erro ao listar rejeições pendentes:", err);
+      return res.status(500).json({ error: "Erro ao listar rejeições" });
+    }
+  }
+
+  static async acknowledgeRejection(req: Request, res: Response) {
+    try {
+      const userId = (req as any).userId;
+      const { messageId } = req.params;
+
+      const result = await prisma.challengeChat.updateMany({
+        where: {
+          id: messageId,
+          userId,
+          verificationStatus: "rejected",
+          rejectionAcknowledgedAt: null,
+        },
+        data: { rejectionAcknowledgedAt: new Date() },
+      });
+
+      return res.json({ data: { acknowledged: result.count > 0 } });
+    } catch (err) {
+      console.error("[Chat] Erro ao confirmar rejeição:", err);
+      return res.status(500).json({ error: "Erro ao confirmar rejeição" });
     }
   }
 }

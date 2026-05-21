@@ -228,17 +228,18 @@ model ChallengePost {
 }
 
 model ChallengeChat {
-  id                 String    @id @default(uuid())
-  challengeId        String
-  userId             String
-  message            String
-  created_at         DateTime  @default(now())
-  imageUrl           String?
-  verificationStatus String?   @default("pending")
-  verifiedAt         DateTime?
-  verificationReason String?   @db.Text
-  challenge          Challenge @relation(fields: [challengeId], references: [id])
-  user               User      @relation(fields: [userId], references: [id])
+  id                        String    @id @default(uuid())
+  challengeId               String
+  userId                    String
+  message                   String
+  created_at                DateTime  @default(now())
+  imageUrl                  String?
+  verificationStatus        String?   @default("pending")
+  verifiedAt                DateTime?
+  verificationReason        String?   @db.Text
+  rejectionAcknowledgedAt   DateTime?
+  challenge                 Challenge @relation(fields: [challengeId], references: [id])
+  user                      User      @relation(fields: [userId], references: [id])
 
   @@index([challengeId], map: "challenge_chat_challengeId_fkey")
   @@index([userId], map: "challenge_chat_userId_fkey")

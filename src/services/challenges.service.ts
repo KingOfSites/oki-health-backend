@@ -176,8 +176,8 @@ export class ChallengesService {
     return rows.map(r => {
       const computed_status = computeChallengeStatus(r.challenge);
       const weeklyGoal = parseWeeklyGoal(r.challenge.frequency);
-      const { endOfDay: endOfStartDay } = computeStartDayBoundaries(r.challenge);
-      const closedForNewParticipants = new Date() > endOfStartDay;
+      const { startOfDay: startOfStartDay } = computeStartDayBoundaries(r.challenge);
+      const closedForNewParticipants = new Date() >= startOfStartDay;
 
       return {
         id: r.challenge.id,
@@ -266,8 +266,8 @@ export class ChallengesService {
     return rows.map(c => {
       const computed_status = computeChallengeStatus(c);
       const weeklyGoal = parseWeeklyGoal(c.frequency);
-      const { endOfDay: endOfStartDay } = computeStartDayBoundaries(c);
-      const closedForNewParticipants = new Date() > endOfStartDay;
+      const { startOfDay: startOfStartDay } = computeStartDayBoundaries(c);
+      const closedForNewParticipants = new Date() >= startOfStartDay;
 
       return {
         id: c.id,
@@ -368,10 +368,10 @@ export class ChallengesService {
       });
     }
     const weeklyGoal = parseWeeklyGoal(challenge.frequency);
-    const { startOfDay: startOfStartDay, endOfDay: endOfStartDay } =
+    const { startOfDay: startOfStartDay } =
       computeStartDayBoundaries(challenge);
     const now = new Date();
-    const closedForNewParticipants = now > endOfStartDay;
+    const closedForNewParticipants = now >= startOfStartDay;
     const allowsCreatorDelete = is_creator && now < startOfStartDay;
 
     return {
@@ -471,8 +471,8 @@ export class ChallengesService {
     return challenges.map(c => {
       const computed_status = computeChallengeStatus(c);
       const weeklyGoal = parseWeeklyGoal(c.frequency);
-      const { endOfDay: endOfStartDay } = computeStartDayBoundaries(c);
-      const closedForNewParticipants = new Date() > endOfStartDay;
+      const { startOfDay: startOfStartDay } = computeStartDayBoundaries(c);
+      const closedForNewParticipants = new Date() >= startOfStartDay;
 
       return {
         id: c.id,
@@ -909,11 +909,10 @@ export class ChallengesService {
       };
     }
 
-    // Novos participantes só podem entrar até o final do dia de início.
-    // Após o dia de início (00:00 do dia seguinte) o desafio é fechado para
-    // novas entradas, mantendo os já inscritos.
-    const { endOfDay: endOfStartDay } = computeStartDayBoundaries(challenge);
-    if (now > endOfStartDay) {
+    // Novos participantes só podem entrar antes do início do desafio.
+    // A partir das 00:00 do dia de start, ninguém mais pode entrar.
+    const { startOfDay: startOfStartDay } = computeStartDayBoundaries(challenge);
+    if (now >= startOfStartDay) {
       return {
         requiresPayment: false,
         already: false,

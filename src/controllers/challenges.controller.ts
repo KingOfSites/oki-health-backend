@@ -368,7 +368,7 @@ static async searchChallenges(req: AuthRequest, res: Response, next: NextFunctio
                 const y = start.getUTCFullYear();
                 const m = start.getUTCMonth();
                 const d = start.getUTCDate();
-                return new Date(y, m, d, 23, 59, 59, 999);
+                return new Date(y, m, d, 0, 0, 0, 0);
               })();
               const weeklyGoalMatch = c.frequency ? String(c.frequency).match(/\d+/) : null;
               const weeklyGoal = weeklyGoalMatch ? parseInt(weeklyGoalMatch[0], 10) : null;
@@ -395,7 +395,7 @@ static async searchChallenges(req: AuthRequest, res: Response, next: NextFunctio
                 weekly_goal: weeklyGoal && weeklyGoal >= 1 && weeklyGoal <= 7 ? weeklyGoal : null,
                 duration_weeks: (c as any).durationWeeks ?? null,
                 durationWeeks: (c as any).durationWeeks ?? null,
-                is_closed_for_new_participants: new Date() > startDayBounds,
+                is_closed_for_new_participants: new Date() >= startDayBounds,
               };
             }),
           },
@@ -456,7 +456,7 @@ static async searchChallenges(req: AuthRequest, res: Response, next: NextFunctio
               start.getUTCFullYear(),
               start.getUTCMonth(),
               start.getUTCDate(),
-              23, 59, 59, 999,
+              0, 0, 0, 0,
             );
             const weeklyGoalMatch = c.frequency ? String(c.frequency).match(/\d+/) : null;
             const weeklyGoal = weeklyGoalMatch ? parseInt(weeklyGoalMatch[0], 10) : null;
@@ -482,7 +482,7 @@ static async searchChallenges(req: AuthRequest, res: Response, next: NextFunctio
               weekly_goal: weeklyGoal && weeklyGoal >= 1 && weeklyGoal <= 7 ? weeklyGoal : null,
               duration_weeks: (c as any).durationWeeks ?? null,
               durationWeeks: (c as any).durationWeeks ?? null,
-              is_closed_for_new_participants: new Date() > startDayEnd,
+              is_closed_for_new_participants: new Date() >= startDayEnd,
             };
           }),
         },

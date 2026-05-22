@@ -20,6 +20,16 @@ challengeRoutes.post(
   authenticate,
   ChallengeChatController.sendMessage
 );
+challengeRoutes.get(
+  "/:challengeId/chat/rejections/pending",
+  authenticate,
+  ChallengeChatController.getPendingRejections,
+);
+challengeRoutes.post(
+  "/chat/rejections/:messageId/ack",
+  authenticate,
+  ChallengeChatController.acknowledgeRejection,
+);
 
 /* ============================================================
 🔥 0.1 — CHAT PRIVADO 1:1 (entre participantes)

@@ -29,17 +29,40 @@ export class SubscribeController {
     planType?: "monthly" | "annual";
   }) {
     if (body.planId) {
-      return prisma.plan.findUnique({ where: { id: body.planId } });
+      const byId = await prisma.plan.findUnique({ where: { id: body.planId } });
+      if (byId) return byId;
     }
+
     if (body.planName) {
-      return prisma.plan.findFirst({ where: { name: body.planName } });
+      const exact = await prisma.plan.findFirst({
+        where: { name: body.planName },
+      });
+      if (exact) return exact;
+      if (/premium/i.test(body.planName)) {
+        return prisma.plan.findFirst({ where: { name: "Premium" } });
+      }
+      if (/afiliad/i.test(body.planName)) {
+        return prisma.plan.findFirst({ where: { name: "Afiliado" } });
+      }
     }
+
+    // PDF (Maio/2026 #9): existe um único plano "Premium" (mensal/anual só
+    // alteram a duração da assinatura, não o nome no banco).
     if (body.planType) {
-      const fallbackName =
-        body.planType === "annual" ? "Premium Anual" : "Premium Mensal";
-      return prisma.plan.findFirst({ where: { name: fallbackName } });
+      const premium = await prisma.plan.findFirst({
+        where: {
+          OR: [
+            { name: "Premium" },
+            { name: "Premium Mensal" },
+            { name: "Premium Anual" },
+          ],
+        },
+        orderBy: { price: "desc" },
+      });
+      if (premium) return premium;
     }
-    return null;
+
+    return prisma.plan.findFirst({ where: { name: "Premium" } });
   }
 
   // ------------------------------ LISTAR PLANOS ------------------------------

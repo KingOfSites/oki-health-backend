@@ -1,6 +1,9 @@
 import { Response, NextFunction } from "express";
 import { AuthRequest } from "../middleware/auth";
-import { ChallengesService } from "../services/challenges.service";
+import {
+  ChallengesService,
+  generateChallengeAccessCode,
+} from "../services/challenges.service";
 import prisma from "../config/database";
 
 export class ChallengesController {
@@ -240,16 +243,6 @@ export class ChallengesController {
 
       const isPublicResolved = isPublic !== undefined ? Boolean(isPublic) : true;
 
-      // Para desafios privados, gerar código de acesso de 6 caracteres alfanuméricos
-      const generateAccessCode = (): string => {
-        const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // sem 0/O/I/1
-        let out = "";
-        for (let i = 0; i < 6; i++) {
-          out += chars[Math.floor(Math.random() * chars.length)];
-        }
-        return out;
-      };
-
       const challengePayload: any = {
         createdById: req.userId,
         title,
@@ -270,7 +263,7 @@ export class ChallengesController {
         maxWeight: maxWeight ? parseFloat(maxWeight) : null,
         requiredActivityLevel: requiredActivityLevel || null,
         isPublic: isPublicResolved,
-        accessCode: isPublicResolved ? null : generateAccessCode(),
+        accessCode: isPublicResolved ? null : generateChallengeAccessCode(),
         frequency: resolvedFrequency,
         mode: mode || "activity",
         prizeDistributionType: prizeDistributionType || "integral",
@@ -304,7 +297,16 @@ export class ChallengesController {
         endTime: data.endTime,
       });
 
-      return res.status(201).json({ success: true, data });
+      const accessCode = data.isPublic ? null : data.accessCode;
+      return res.status(201).json({
+        success: true,
+        data: {
+          ...data,
+          is_private: !data.isPublic,
+          access_code: accessCode,
+          accessCode,
+        },
+      });
 
     } catch (error) {
       return next(error);

@@ -4,6 +4,16 @@ import { randomUUID } from "crypto";
 // Converte o campo `frequency` (string variável guardando ex.: "3", "daily", "5x")
 // na meta numérica de registros por semana exibida nos cards e nas notificações.
 // Retorna null quando o valor não puder ser interpretado como um inteiro válido.
+/** Código de 6 caracteres para desafios privados (sem 0/O/I/1). */
+export function generateChallengeAccessCode(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let out = "";
+  for (let i = 0; i < 6; i++) {
+    out += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return out;
+}
+
 export function parseWeeklyGoal(value?: string | null): number | null {
   if (!value) return null;
   const match = String(value).match(/\d+/);
@@ -347,6 +357,16 @@ export class ChallengesService {
     const isParticipant = challenge.participants.some(p => p.userId === userId);
     const participants_count = challenge.participants.length;
     const is_creator = challenge.createdById === userId;
+
+    // Desafios privados antigos podem não ter código — gera e persiste para o criador.
+    let accessCodeForCreator = challenge.accessCode;
+    if (!challenge.isPublic && is_creator && !accessCodeForCreator) {
+      accessCodeForCreator = generateChallengeAccessCode();
+      await prisma.challenge.update({
+        where: { id: challengeId },
+        data: { accessCode: accessCodeForCreator },
+      });
+    }
     const weeklyGoal = parseWeeklyGoal(challenge.frequency);
     const { startOfDay: startOfStartDay, endOfDay: endOfStartDay } =
       computeStartDayBoundaries(challenge);
@@ -378,7 +398,8 @@ export class ChallengesService {
         durationWeeks: (challenge as any).durationWeeks ?? null,
         is_closed_for_new_participants: closedForNewParticipants,
         // Só expõe o código para o criador (privacidade)
-        access_code: is_creator ? challenge.accessCode : null,
+        access_code: is_creator ? accessCodeForCreator : null,
+        accessCode: is_creator ? accessCodeForCreator : null,
         created_by_id: challenge.createdById,
         creator_id: challenge.createdById,
         createdById: challenge.createdById,
@@ -533,6 +554,9 @@ export class ChallengesService {
       challengeData.endTime = null;
     }
     
+    const isPublic =
+      challengeData.isPublic !== undefined ? Boolean(challengeData.isPublic) : true;
+
     // Criar objeto de dados garantindo que todos os campos opcionais sejam null ao invés de undefined
     const prismaData: any = {
       createdById: challengeData.createdById,
@@ -555,7 +579,10 @@ export class ChallengesService {
       requiredActivityLevel: challengeData.requiredActivityLevel || null,
       startTime: challengeData.startTime, // Já processado acima
       endTime: challengeData.endTime, // Já processado acima
-      isPublic: challengeData.isPublic !== undefined ? Boolean(challengeData.isPublic) : true,
+      isPublic,
+      accessCode: !isPublic
+        ? (challengeData.accessCode?.trim() || generateChallengeAccessCode())
+        : null,
       frequency: challengeData.frequency || "daily",
       mode: challengeData.mode || "activity",
       prizeDistributionType: challengeData.prizeDistributionType || "integral",

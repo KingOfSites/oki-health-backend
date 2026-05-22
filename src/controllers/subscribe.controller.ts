@@ -3,6 +3,47 @@ import prisma from "../config/database";
 import { mpClient } from "../lib/mercadopago";
 import { Payment, CardToken } from "mercadopago";
 import { AffiliateService } from "../services/affiliate.service";
+import { randomUUID } from "crypto";
+
+function splitPersonName(fullName: string | null | undefined): {
+  firstName: string;
+  lastName: string;
+} {
+  const parts = String(fullName || "Usuario Oki")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (parts.length === 0) return { firstName: "Usuario", lastName: "Oki" };
+  if (parts.length === 1) return { firstName: parts[0], lastName: "Oki" };
+  return {
+    firstName: parts[0],
+    lastName: parts.slice(1).join(" "),
+  };
+}
+
+function paymentMethodIdFromCardNumber(cardNumber: string): string {
+  const digit = cardNumber.replace(/\D/g, "")[0];
+  if (digit === "4") return "visa";
+  if (digit === "5") return "master";
+  if (digit === "3") return "amex";
+  if (digit === "6") return "elo";
+  return "master";
+}
+
+/** PolicyAgent costuma bloquear quando o e-mail do pagador = e-mail da conta coletora MP. */
+function payerEmailBlockedByMpPolicy(payerEmail: string): string | null {
+  const payer = payerEmail.trim().toLowerCase();
+  if (!payer) return "Informe um e-mail válido para o pagador.";
+
+  const seller = process.env.MP_SELLER_EMAIL?.trim().toLowerCase();
+  if (seller && payer === seller) {
+    return (
+      "O e-mail do pagador é o mesmo da conta Mercado Pago que recebe o pagamento. " +
+      "Use outro e-mail no app ou outra conta de teste (o CPF pode ser diferente e mesmo assim bloquear)."
+    );
+  }
+  return null;
+}
 
 // Helper: dispara cálculo de comissão de afiliado sem quebrar o fluxo principal.
 async function commissionAfterSubscription(
@@ -195,6 +236,16 @@ export class SubscribeController {
         });
       }
 
+      const payerEmail = String(email || "").trim().toLowerCase();
+      const emailPolicyError = payerEmailBlockedByMpPolicy(payerEmail);
+      if (emailPolicyError) {
+        return res.status(400).json({
+          success: false,
+          message: emailPolicyError,
+          errorCode: "MP_PAYER_EMAIL_MATCHES_SELLER",
+        });
+      }
+
       // 1) Criar TOKEN do cartão
       let cardToken;
       try {
@@ -229,20 +280,27 @@ export class SubscribeController {
 
       let mpResponse: any;
       try {
+        const { firstName, lastName } = splitPersonName(cardName);
         mpResponse = await payment.create({
           body: {
             token: cardToken.id,
             transaction_amount: amount,
             installments: installments || 1,
+            payment_method_id: paymentMethodIdFromCardNumber(cardNumberClean),
             description: description || `Assinatura ${plan.name}`,
+            external_reference: `subscription-${userId}-${plan.id}`,
             payer: {
-              email,
-              first_name: cardName.split(" ")[0] || cardName,
+              email: payerEmail,
+              first_name: firstName,
+              last_name: lastName,
               identification: {
                 type: "CPF",
                 number: cpfDigits,
               },
             },
+          },
+          requestOptions: {
+            idempotencyKey: randomUUID(),
           },
         });
       } catch (paymentError: any) {
@@ -277,7 +335,7 @@ export class SubscribeController {
           return res.status(400).json({
             success: false,
             message:
-              "O Mercado Pago bloqueou esta transação (PolicyAgent). Possíveis causas: o pagador é o próprio dono da conta coletora, a conta MP está em análise/KYC pendente, ou o cartão usado pertence ao mesmo titular da conta MP. Tente com outro usuário/cartão.",
+              "O Mercado Pago bloqueou esta transação (PolicyAgent). Além do CPF, verifique se o e-mail do pagador é diferente do e-mail da conta MP que recebe. Outras causas: conta em análise, cartão vinculado ao mesmo titular da conta coletora, ou credencial APP_USR de outra aplicação/conta.",
             errorCode: "PA_UNAUTHORIZED_RESULT_FROM_POLICIES",
           });
         }
@@ -645,21 +703,44 @@ export class SubscribeController {
         });
       }
 
+      const payerEmail = String(user.email || "").trim().toLowerCase();
+      const emailPolicyError = payerEmailBlockedByMpPolicy(payerEmail);
+      if (emailPolicyError) {
+        return res.status(400).json({
+          success: false,
+          message: emailPolicyError,
+          errorCode: "MP_PAYER_EMAIL_MATCHES_SELLER",
+        });
+      }
+
+      const { firstName, lastName } = splitPersonName(user.name);
+      const pixExpiration = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+
       const payment = new Payment(mpClient);
+
+      console.log(
+        `[Subscribe PIX] userId=${userId} plan=${plan.name} payerEmail=${payerEmail.replace(/^(.{2}).*(@.*)$/, "$1***$2")}`,
+      );
 
       const mpPix: any = await payment.create({
         body: {
           transaction_amount: plan.price,
           description: `Assinatura ${plan.name}`,
           payment_method_id: "pix",
+          date_of_expiration: pixExpiration,
+          external_reference: `subscription-pix-${userId}-${plan.id}`,
           payer: {
-            email: user.email,
-            first_name: user.name.split(" ")[0] || user.name,
+            email: payerEmail,
+            first_name: firstName,
+            last_name: lastName,
             identification: {
               type: "CPF",
               number: cpfDigits,
             },
           },
+        },
+        requestOptions: {
+          idempotencyKey: randomUUID(),
         },
       });
 
@@ -750,8 +831,9 @@ export class SubscribeController {
         return res.status(400).json({
           success: false,
           message:
-            "O Mercado Pago bloqueou esta transação. Verifique se a conta tem PIX habilitado e se o pagador é diferente do dono da conta coletora.",
+            "O Mercado Pago bloqueou o PIX (PolicyAgent). PIX pode estar habilitado e o CPF ser de outra pessoa — o MP também bloqueia quando o e-mail do usuário no app é o mesmo da conta que recebe, ou quando a conta está em análise. Tente com outro e-mail de cadastro ou confira o painel MP em Suas integrações > Pagamentos.",
           errorCode: "PA_UNAUTHORIZED_RESULT_FROM_POLICIES",
+          mpError: error?.cause ?? error?.error ?? null,
         });
       }
 

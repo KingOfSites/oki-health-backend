@@ -3,6 +3,8 @@ import prisma from "../config/database";
 import { AuthRequest } from "../middleware/auth";
 import { MercadoPagoConfig, Payment, CardToken } from "mercadopago";
 import crypto from "crypto";
+// OKI 26/05/2026 #2 (V2): payout automático via MP nos saques PIX.
+import { MpPayoutService } from "../services/mpPayout.service";
 
 // ======================================================
 // 🔑 CONFIG MERCADO PAGO - APENAS PRODUÇÃO
@@ -153,12 +155,15 @@ export class WalletController {
   }
 
   // GET /api/wallet/transactions
+  // OKI 24/05/2026 #5: agora também devolve o desafio relacionado de
+  // cada movimentação para que o app monte o "Histórico de desafios"
+  // com valor pago, valor recebido, premiação, comissão, status etc.
   static async getTransactions(req: Request, res: Response) {
     try {
       const userId = (req as AuthRequest).userId;
       if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
-      // Buscar transações normais
+      // Buscar transações normais com o desafio relacionado
       const transactions = await prisma.transaction.findMany({
         where: { userId },
         orderBy: { created_at: "desc" },
@@ -170,12 +175,19 @@ export class WalletController {
           description: true,
           status: true,
           created_at: true,
+          challengeId: true,
+          challenge: {
+            select: {
+              id: true,
+              title: true,
+            },
+          },
         },
       });
 
       // Buscar solicitações de saque rejeitadas para incluir no histórico
       const rejectedWithdrawals = await prisma.withdrawalRequest.findMany({
-        where: { 
+        where: {
           userId,
           status: "rejected"
         },
@@ -194,11 +206,13 @@ export class WalletController {
         id: withdrawal.id,
         type: "withdraw_rejected",
         amount: withdrawal.amount,
-        description: withdrawal.adminNotes 
-          ? `Saque rejeitado: ${withdrawal.adminNotes}` 
+        description: withdrawal.adminNotes
+          ? `Saque rejeitado: ${withdrawal.adminNotes}`
           : "Saque rejeitado",
         status: "rejected",
         created_at: withdrawal.created_at,
+        challengeId: null as string | null,
+        challenge: null as { id: string; title: string } | null,
       }));
 
       // Combinar e ordenar todas as transações por data (mais recente primeiro)
@@ -389,10 +403,22 @@ export class WalletController {
         },
       });
 
-      return res.json({
-        success: true,
-        data: requests,
-      });
+      // OKI 26/05/2026 #2: enriquece com campos prontos para o painel
+      // admin — chave PIX formatada, valor BRL, copy targets e flag
+      // indicando se o payout MP já foi disparado.
+      const data = requests.map((r: any) => ({
+        ...r,
+        // Campos derivados para facilitar a vida do admin:
+        amount_brl: `R$ ${Number(r.amount).toFixed(2).replace(".", ",")}`,
+        pix_key_formatted: formatPixKeyForDisplay(r.pixKeyType, r.pixKey),
+        pix_key_copyable: normalizePixKeyForCopy(r.pixKeyType, r.pixKey),
+        cpf_formatted: formatCpf(r.cpf),
+        is_auto_payout: Boolean(r.mpPayoutId),
+        can_mark_paid_manually:
+          r.status === "pending" || r.status === "approved",
+      }));
+
+      return res.json({ success: true, data });
 
     } catch (err) {
       console.error("[Wallet.getWithdrawalRequests]", err);
@@ -467,20 +493,73 @@ export class WalletController {
         return res.status(400).json({ error: "Usuário não possui saldo suficiente" });
       }
 
-      // Atualizar solicitação para aprovada
+      // OKI 26/05/2026 #2 (V2): se a flag MP_PAYOUT_ENABLED estiver on
+      // e o saque for via PIX, disparamos o PIX automaticamente via MP.
+      // O `mp_payout_id` retornado fica salvo para o webhook fechar o
+      // ciclo. Para saque bancário ou flag off, mantém o fluxo manual.
+      const isPixWithAutoPayout =
+        request.withdrawalType === "pix" && MpPayoutService.isEnabled();
+
+      let payoutResult: { payoutId: string | null; status: string; error?: string } | null = null;
+      if (isPixWithAutoPayout) {
+        const result = await MpPayoutService.sendPix({
+          amountReais: request.amount,
+          pixKey: request.pixKey || "",
+          pixKeyType: (request.pixKeyType || "cpf") as any,
+          beneficiaryCpf: request.cpf,
+          beneficiaryName: request.fullName,
+          description: `Saque Oki Health #${request.id.slice(0, 8)}`,
+          idempotencyKey: `withdrawal:${request.id}`,
+        });
+        payoutResult = {
+          payoutId: result.payoutId,
+          status: result.status,
+          error: result.error,
+        };
+
+        if (!result.ok) {
+          // Não muda o status do saque — fica pendente para retry manual
+          // do admin. Só anotamos o erro nos campos novos.
+          await prisma.withdrawalRequest.update({
+            where: { id },
+            data: {
+              mpPayoutError: result.error || "Falha desconhecida no MP",
+              mpPayoutStatus: "failed",
+              payoutAttemptedAt: new Date(),
+            } as any,
+          });
+
+          return res.status(502).json({
+            success: false,
+            error: "Falha ao processar PIX no Mercado Pago. Saque mantido como pendente.",
+            details: result.error,
+          });
+        }
+      }
+
+      // Atualizar solicitação para aprovada.
+      // Em PIX automático: status='processing' até o webhook confirmar.
+      // Em manual: status='approved' como sempre.
       await prisma.withdrawalRequest.update({
         where: { id },
         data: {
-          status: "approved",
+          status: isPixWithAutoPayout ? "processing" : "approved",
           adminNotes: adminNotes || null,
           processedBy: userId,
           processedAt: new Date(),
-        },
+          mpPayoutId: payoutResult?.payoutId || null,
+          mpPayoutStatus: payoutResult?.status || null,
+          payoutAttemptedAt: payoutResult ? new Date() : null,
+        } as any,
       });
 
       return res.json({
         success: true,
-        message: "Solicitação aprovada com sucesso",
+        message: isPixWithAutoPayout
+          ? "PIX disparado automaticamente. Aguardando confirmação do Mercado Pago."
+          : "Solicitação aprovada com sucesso",
+        autoPayout: isPixWithAutoPayout,
+        payoutId: payoutResult?.payoutId || null,
       });
 
     } catch (err) {
@@ -626,6 +705,239 @@ export class WalletController {
 
     } catch (err) {
       console.error("[Wallet.completeWithdrawalRequest]", err);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+
+  // ======================================================
+  // 💸 OKI 26/05/2026 #2 (V2): WEBHOOK MP PAYOUT (PIX OUT)
+  // ======================================================
+  // MP chama essa rota com algo como:
+  //   { "type": "payout", "data": { "id": "<payoutId>" } }
+  // ou via query string `?topic=payouts&id=<payoutId>`. Tratamos
+  // ambos os formatos e fazemos GET no MP para buscar status final.
+  static async mpPayoutWebhook(req: Request, res: Response) {
+    try {
+      const rawBody = JSON.stringify(req.body || {});
+      const headers: Record<string, string> = {};
+      for (const [k, v] of Object.entries(req.headers)) {
+        if (typeof v === "string") headers[k.toLowerCase()] = v;
+      }
+
+      const signatureValid = MpPayoutService.verifyWebhookSignature(
+        headers,
+        rawBody,
+      );
+      if (!signatureValid) {
+        console.warn("[Wallet.mpPayoutWebhook] Assinatura inválida — ignorando.");
+        return res.status(401).json({ error: "Invalid signature" });
+      }
+
+      // Extrai payoutId do body OU da query.
+      const payoutId =
+        (req.body?.data?.id && String(req.body.data.id)) ||
+        (req.body?.id && String(req.body.id)) ||
+        (req.query?.id && String(req.query.id)) ||
+        null;
+
+      const topic =
+        req.body?.type || req.body?.topic || req.query?.topic || "";
+
+      if (!payoutId) {
+        console.warn("[Wallet.mpPayoutWebhook] Sem payoutId no payload.", req.body);
+        return res.status(200).json({ ok: true, note: "no payoutId" });
+      }
+
+      // Aceita só payouts. Ignora outros tópicos sem dar erro pro MP.
+      if (topic && !String(topic).toLowerCase().includes("payout")) {
+        return res.status(200).json({ ok: true, ignored: topic });
+      }
+
+      // Localiza o saque pelo payoutId.
+      const request = await (prisma as any).withdrawalRequest.findFirst({
+        where: { mpPayoutId: payoutId },
+        include: { user: { select: { id: true, balance: true } } },
+      });
+
+      if (!request) {
+        console.warn(
+          "[Wallet.mpPayoutWebhook] Saque não encontrado para payoutId:",
+          payoutId,
+        );
+        // Retorna 200 mesmo assim para o MP parar de retransmitir.
+        return res.status(200).json({ ok: true, note: "not found" });
+      }
+
+      // Status pode vir no body ou precisar buscar via GET no MP.
+      let status: string =
+        req.body?.data?.status ||
+        req.body?.status ||
+        request.mpPayoutStatus ||
+        "processing";
+
+      try {
+        const accessToken =
+          process.env.MP_ACCESS_TOKEN || process.env.MERCADOPAGO_ACCESS_TOKEN || "";
+        if (accessToken) {
+          const url = `https://api.mercadopago.com/v1/payouts/${payoutId}`;
+          const lookup = await fetch(url, {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          });
+          if (lookup.ok) {
+            const json: any = await lookup.json();
+            status = json?.status || status;
+          }
+        }
+      } catch (err) {
+        console.warn("[Wallet.mpPayoutWebhook] Falha ao buscar status no MP:", err);
+      }
+
+      const normalized = String(status).toLowerCase();
+      const isApproved =
+        normalized === "approved" ||
+        normalized === "completed" ||
+        normalized === "paid" ||
+        normalized === "success";
+      const isRejected =
+        normalized === "rejected" ||
+        normalized === "failed" ||
+        normalized === "cancelled" ||
+        normalized === "canceled";
+
+      if (isApproved && request.status !== "completed") {
+        // Idempotente: só completa se ainda não foi.
+        await prisma.$transaction(async (tx) => {
+          await (tx as any).withdrawalRequest.update({
+            where: { id: request.id },
+            data: {
+              status: "completed",
+              mpPayoutStatus: "approved",
+              payoutCompletedAt: new Date(),
+            },
+          });
+
+          // Debita saldo (se ainda não foi debitado).
+          await tx.user.update({
+            where: { id: request.userId },
+            data: {
+              balance: { decrement: request.amount },
+              total_withdrawn: { increment: request.amount },
+            },
+          });
+
+          await tx.transaction.create({
+            data: {
+              userId: request.userId,
+              amount: request.amount,
+              type: "withdraw",
+              status: "completed",
+              description: `Saque via PIX (Mercado Pago) — R$ ${request.amount.toFixed(2)}`,
+            },
+          });
+        });
+
+        return res.json({ ok: true, status: "completed" });
+      }
+
+      if (isRejected && request.status !== "rejected") {
+        await (prisma as any).withdrawalRequest.update({
+          where: { id: request.id },
+          data: {
+            status: "rejected",
+            mpPayoutStatus: normalized,
+            adminNotes:
+              request.adminNotes ||
+              `PIX recusado pelo Mercado Pago (${normalized}). Saldo do usuário foi mantido.`,
+          },
+        });
+        return res.json({ ok: true, status: "rejected" });
+      }
+
+      // Status intermediário — só atualiza mpPayoutStatus.
+      await (prisma as any).withdrawalRequest.update({
+        where: { id: request.id },
+        data: { mpPayoutStatus: normalized },
+      });
+
+      return res.json({ ok: true, status: normalized });
+    } catch (err) {
+      console.error("[Wallet.mpPayoutWebhook]", err);
+      // Não retornar 500 — MP retransmite. Aceita silenciosamente.
+      return res.status(200).json({ ok: true, error: "logged" });
+    }
+  }
+
+  // ======================================================
+  // 🧾 ATALHO ADMIN: MARCAR SAQUE PAGO MANUALMENTE
+  // ======================================================
+  // Usado enquanto MP_PAYOUT_ENABLED=false. Em uma chamada, o admin:
+  // 1) aprova o saque, 2) debita o saldo, 3) cria a Transaction.
+  // Idempotente — só age se status for pending/approved.
+  static async markWithdrawalPaidManually(req: Request, res: Response) {
+    try {
+      const userId = (req as AuthRequest).userId;
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+      const admin = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { isAdmin: true },
+      });
+      if (!admin || !admin.isAdmin) {
+        return res.status(403).json({ error: "Acesso negado. Apenas administradores." });
+      }
+
+      const { id } = req.params;
+      const { adminNotes } = req.body || {};
+
+      const request = await prisma.withdrawalRequest.findUnique({
+        where: { id },
+        include: { user: { select: { id: true, balance: true } } },
+      });
+      if (!request) return res.status(404).json({ error: "Solicitação não encontrada" });
+
+      if (request.status === "completed") {
+        return res.json({ success: true, message: "Saque já estava como pago.", alreadyPaid: true });
+      }
+      if (request.status === "rejected") {
+        return res.status(400).json({ error: "Saque foi rejeitado — não pode virar pago." });
+      }
+      if (request.user.balance < request.amount) {
+        return res.status(400).json({ error: "Usuário não possui saldo suficiente." });
+      }
+
+      await prisma.$transaction(async (tx) => {
+        await tx.withdrawalRequest.update({
+          where: { id },
+          data: {
+            status: "completed",
+            adminNotes: adminNotes || request.adminNotes || "Saque marcado como pago manualmente pelo admin.",
+            processedBy: userId,
+            processedAt: request.processedAt || new Date(),
+            payoutCompletedAt: new Date(),
+            mpPayoutStatus: "manual_paid",
+          } as any,
+        });
+        await tx.user.update({
+          where: { id: request.userId },
+          data: {
+            balance: { decrement: request.amount },
+            total_withdrawn: { increment: request.amount },
+          },
+        });
+        await tx.transaction.create({
+          data: {
+            userId: request.userId,
+            amount: request.amount,
+            type: "withdraw",
+            status: "completed",
+            description: `Saque ${request.withdrawalType === "pix" ? "PIX" : "bancário"} (manual) — R$ ${request.amount.toFixed(2)}`,
+          },
+        });
+      });
+
+      return res.json({ success: true, message: "Saque marcado como pago.", id });
+    } catch (err) {
+      console.error("[Wallet.markWithdrawalPaidManually]", err);
       return res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -1945,4 +2257,53 @@ export class WalletController {
       return;
     }
   }
+}
+
+// ============================================================
+// OKI 26/05/2026 #2: helpers de formatação para o painel admin.
+// Visam reduzir o trabalho manual de copiar chave PIX, CPF e valor.
+// ============================================================
+
+function formatCpf(cpf: string | null | undefined): string {
+  const digits = String(cpf || "").replace(/\D/g, "");
+  if (digits.length !== 11) return digits;
+  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+}
+
+function formatPixKeyForDisplay(
+  type: string | null | undefined,
+  key: string | null | undefined,
+): string {
+  const raw = String(key || "").trim();
+  if (!raw) return "";
+  switch (type) {
+    case "cpf": {
+      const d = raw.replace(/\D/g, "");
+      if (d.length === 11) return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
+      return raw;
+    }
+    case "phone": {
+      const d = raw.replace(/\D/g, "");
+      if (d.length === 11) return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+      if (d.length === 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+      return raw;
+    }
+    case "email":
+      return raw.toLowerCase();
+    default:
+      return raw;
+  }
+}
+
+function normalizePixKeyForCopy(
+  type: string | null | undefined,
+  key: string | null | undefined,
+): string {
+  // Versão "limpa" da chave, no formato esperado pelo app do banco
+  // quando o admin colar — sem máscara.
+  const raw = String(key || "").trim();
+  if (!raw) return "";
+  if (type === "cpf" || type === "phone") return raw.replace(/\D/g, "");
+  if (type === "email") return raw.toLowerCase();
+  return raw;
 }

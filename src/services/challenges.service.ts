@@ -173,11 +173,32 @@ export class ChallengesService {
       counts.map(c => [c.challengeId, c._count.challengeId])
     );
 
+    // OKI 24/05/2026 #14 / 26/05/2026 #9: descobrimos se o criador de
+    // cada desafio está em challenge_participants para descontá-lo do
+    // total exibido (criador nunca paga taxa de entrada).
+    const creatorParticipantPairs = await prisma.challengeParticipant.findMany({
+      where: {
+        challengeId: { in: ids },
+        userId: { in: rows.map(r => r.challenge.createdById) },
+      },
+      select: { challengeId: true, userId: true },
+    });
+    const creatorParticipantSet = new Set(
+      creatorParticipantPairs
+        .filter((p) => rows.some((r) => r.challengeId === p.challengeId && r.challenge.createdById === p.userId))
+        .map((p) => p.challengeId),
+    );
+
     return rows.map(r => {
       const computed_status = computeChallengeStatus(r.challenge);
       const weeklyGoal = parseWeeklyGoal(r.challenge.frequency);
       const { startOfDay: startOfStartDay } = computeStartDayBoundaries(r.challenge);
       const closedForNewParticipants = new Date() >= startOfStartDay;
+
+      // OKI 24/05/2026 #14: total bruto - 1 se criador participa.
+      const totalRaw = countMap.get(r.challenge.id) || 0;
+      const creatorIsParticipant = creatorParticipantSet.has(r.challenge.id);
+      const payingCount = Math.max(0, totalRaw - (creatorIsParticipant ? 1 : 0));
 
       return {
         id: r.challenge.id,
@@ -186,12 +207,14 @@ export class ChallengesService {
         type: r.challenge.category,
         category: r.challenge.category,
         status: computed_status,
-        participantsCount: countMap.get(r.challenge.id) || 0,
+        participantsCount: payingCount,
         start_date: r.challenge.startDate,
         end_date: r.challenge.endDate,
         start_time: r.challenge.startTime,
         end_time: r.challenge.endTime,
-        participants_count: countMap.get(r.challenge.id) || 0,
+        participants_count: payingCount,
+        total_participants_with_creator: totalRaw,
+        creator_is_participant: creatorIsParticipant,
         progress: r.progress,
         cover_url: r.challenge.coverUrl || null,
         entry_price_cents: r.challenge.entryPriceCents,
@@ -355,7 +378,15 @@ export class ChallengesService {
     const computed_status = computeChallengeStatus(challenge);
 
     const isParticipant = challenge.participants.some(p => p.userId === userId);
-    const participants_count = challenge.participants.length;
+    // OKI 24/05/2026 #14 e 26/05/2026 #9: criador (com ou sem
+    // participação ativa) nunca entra na conta de participantes pagantes
+    // nem no cálculo do prize pool.
+    const totalParticipantsWithCreator = challenge.participants.length;
+    const creatorIsParticipant = challenge.participants.some(p => p.userId === challenge.createdById);
+    const participants_count = Math.max(
+      0,
+      totalParticipantsWithCreator - (creatorIsParticipant ? 1 : 0),
+    );
     const is_creator = challenge.createdById === userId;
 
     // Desafios privados antigos podem não ter código — gera e persiste para o criador.
@@ -397,6 +428,11 @@ export class ChallengesService {
         duration_weeks: (challenge as any).durationWeeks ?? null,
         durationWeeks: (challenge as any).durationWeeks ?? null,
         is_closed_for_new_participants: closedForNewParticipants,
+        // OKI 24/05/2026 #14: total bruto exposto separadamente — útil
+        // para auditorias / UI que precise mostrar quantas pessoas estão
+        // no chat (incluindo o criador participante).
+        total_participants_with_creator: totalParticipantsWithCreator,
+        creator_is_participant: creatorIsParticipant,
         // Só expõe o código para o criador (privacidade)
         access_code: is_creator ? accessCodeForCreator : null,
         accessCode: is_creator ? accessCodeForCreator : null,
@@ -474,6 +510,15 @@ export class ChallengesService {
       const { startOfDay: startOfStartDay } = computeStartDayBoundaries(c);
       const closedForNewParticipants = new Date() >= startOfStartDay;
 
+      // OKI 24/05/2026 #14 e 26/05/2026 #9: criador nunca paga taxa de
+      // entrada. Tanto o "criador observador" (não está em participants)
+      // quanto o "criador participando" (em participants sem transação
+      // financeira) devem ficar de fora do total de participantes pagantes
+      // e do cálculo de premiação.
+      const creatorIsParticipant = c.participants?.some(p => p.userId === c.createdById) || false;
+      const totalParticipants = c.participants?.length || 0;
+      const payingParticipantsCount = Math.max(0, totalParticipants - (creatorIsParticipant ? 1 : 0));
+
       return {
         id: c.id,
         title: c.title,
@@ -493,14 +538,17 @@ export class ChallengesService {
         is_closed_for_new_participants: closedForNewParticipants,
         status: computed_status,
         created_at: c.created_at,
-        participantsCount: c.participants?.length || 0,
+        participantsCount: payingParticipantsCount,
         created_by_id: c.createdById,
         creator_id: c.createdById,
         createdById: c.createdById,
         creatorId: c.createdById,
         createdBy: { id: c.createdById },
         creator: { id: c.createdById },
-        participants_count: c.participants?.length || 0,
+        participants_count: payingParticipantsCount,
+        // Exposto separadamente caso alguma tela precise do total bruto.
+        total_participants_with_creator: totalParticipants,
+        creator_is_participant: creatorIsParticipant,
         is_participant: userId ? (c.participants?.some(p => p.userId === userId) || false) : false,
         isCreator: userId ? (c.createdById === userId) : false,
         management: {
@@ -611,7 +659,10 @@ export class ChallengesService {
       data: prismaData,
     });
 
-    const creatorParticipates = challengeData.creatorParticipates !== false;
+    // OKI 24/05/2026 #14: criador só vira participante quando o caller
+    // marca explicitamente. Sem essa flag, ele fica como observador e não
+    // entra no participants_count nem no cálculo do pool.
+    const creatorParticipates = challengeData.creatorParticipates === true;
     if (creatorParticipates) {
       await prisma.challengeParticipant.create({
         data: {
@@ -847,6 +898,11 @@ export class ChallengesService {
     userId: string,
     challengeId: string,
     accessCode?: string,
+    // OKI 26/05/2026 — flag explícita pro caso do CRIADOR querer
+    // participar do próprio desafio. Sem isso, criador chamando
+    // joinChallenge devolve "you're the creator (observer)" sem
+    // adicionar. Evita auto-add silencioso de qualquer caminho antigo.
+    creatorJoins: boolean = false,
   ) {
     // Verificar se o desafio existe
     const challenge = await prisma.challenge.findUnique({
@@ -855,6 +911,21 @@ export class ChallengesService {
 
     if (!challenge) {
       throw new Error("Desafio não encontrado");
+    }
+
+    // OKI 26/05/2026 — Criador sem flag explícita continua observador.
+    if (challenge.createdById === userId && !creatorJoins) {
+      const existing = await prisma.challengeParticipant.findUnique({
+        where: { userId_challengeId: { userId, challengeId } },
+      });
+      return {
+        already: Boolean(existing),
+        isCreator: true,
+        requiresPayment: false,
+        message: existing
+          ? "Você é o criador deste desafio e já está participando."
+          : "Você é o criador-observador deste desafio. Sua participação não foi alterada.",
+      };
     }
 
     // Desafio privado exige código de acesso (exceto para o criador)
@@ -886,7 +957,7 @@ export class ChallengesService {
         requiresPayment: false,
         already: false,
         challengeCancelled: true,
-        message: "Este desafio foi cancelado e nÃ£o aceita novas entradas.",
+        message: "Este desafio foi cancelado e não aceita novas entradas.",
       };
     }
 
@@ -895,7 +966,7 @@ export class ChallengesService {
         requiresPayment: false,
         already: false,
         challengeEnded: true,
-        message: "Este desafio jÃ¡ foi concluÃ­do e nÃ£o aceita mais participantes.",
+        message: "Este desafio já foi concluído e não aceita mais participantes.",
       };
     }
 

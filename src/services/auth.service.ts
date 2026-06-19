@@ -727,6 +727,9 @@ export class AuthService {
         id: true,
         email: true,
         name: true,
+        // OKI 26/05/2026 #7: nickname é editável e usado como nome público
+        // em ranking/chat/wallet — expomos junto no perfil.
+        nickname: true,
         age: true,
         city: true,
         avatar_url: true,
@@ -757,6 +760,7 @@ export class AuthService {
     userId: string,
     data: {
       name?: string;
+      nickname?: string;
       age?: number;
       city?: string;
       avatar_url?: string;
@@ -792,6 +796,48 @@ export class AuthService {
     if (data.altura !== undefined) updateData.altura = data.altura;
     if (data.atividade !== undefined) updateData.atividade = data.atividade;
 
+    // OKI 26/05/2026 #7: usuário pode editar o nickname pelo app. O nome
+    // refletido em ranking/chat/wallet usa publicName (nickname || name),
+    // então validamos unicidade e regras básicas de moderação aqui.
+    if (data.nickname !== undefined) {
+      const raw = String(data.nickname || "").trim();
+
+      if (raw === "") {
+        // Permitir apagar — volta a exibir o nome do cadastro.
+        updateData.nickname = null;
+      } else {
+        if (raw.length < 3 || raw.length > 24) {
+          throw new AppError(400, "O nickname deve ter entre 3 e 24 caracteres.");
+        }
+
+        // Permite letras/números/underline/.- (sem espaços ou caracteres especiais)
+        if (!/^[a-zA-Z0-9._-]+$/.test(raw)) {
+          throw new AppError(
+            400,
+            "Use apenas letras, números, ponto, traço e underline no nickname.",
+          );
+        }
+
+        // Lista mínima de palavras proibidas (moderação simples).
+        const banned = ["admin", "moderador", "suporte", "oki", "okihealth"];
+        const lower = raw.toLowerCase();
+        if (banned.some((w) => lower === w)) {
+          throw new AppError(400, "Esse nickname não está disponível.");
+        }
+
+        // Unicidade — case-insensitive (MySQL collation padrão já ignora caso).
+        const existing = await prisma.user.findFirst({
+          where: { nickname: raw, NOT: { id: userId } },
+          select: { id: true },
+        });
+        if (existing) {
+          throw new AppError(409, "Esse nickname já está em uso.");
+        }
+
+        updateData.nickname = raw;
+      }
+    }
+
     const updated = await prisma.user.update({
       where: { id: userId },
       data: updateData,
@@ -799,6 +845,7 @@ export class AuthService {
         id: true,
         email: true,
         name: true,
+        nickname: true,
         age: true,
         city: true,
         avatar_url: true,

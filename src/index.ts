@@ -118,7 +118,7 @@ app.use((req, _res, next) => {
 app.get("/", (_req, res) => {
   res.json({ 
     success: true, 
-    message: "🚀 Oki Health Backend API está funcionando!",
+    message: "🚀 Oki Health Plataforma API está funcionando!",
     timestamp: new Date().toISOString(),
     port: PORT,
     environment: env.NODE_ENV,

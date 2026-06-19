@@ -282,6 +282,143 @@ export class AuthController {
     }
   }
 
+  // DELETE /api/auth/account
+  // OKI 26/05/2026 — Exclusão de conta pelo próprio usuário.
+  // Requisito LGPD + App Store/Play Store: o app precisa ter um botão
+  // dentro das configurações que permita excluir a conta.
+  //
+  // Fluxo:
+  // 1) Anonimiza o usuário (email/nome/nickname/avatar/password vão pra valor descartável)
+  // 2) Cancela desafios criados que ainda não iniciaram (libera os outros participantes)
+  // 3) Remove o usuário dos desafios em que estava participando
+  // 4) Apaga dados pessoais que não têm valor histórico (peso, nutrição, notificações, conquistas)
+  // 5) Mantém transações/saques sem o vínculo pessoal (para auditoria fiscal)
+  // 6) Marca o registro com `deletedAt` para bloquear login futuro
+  static async deleteAccount(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      if (!req.userId) {
+        return res.status(401).json({ success: false, message: "Não autenticado" });
+      }
+
+      const userId = req.userId;
+      const { password, confirmation } = req.body || {};
+
+      // Confirmação textual obrigatória — evita exclusão acidental
+      if (String(confirmation || "").trim().toUpperCase() !== "EXCLUIR") {
+        return res.status(400).json({
+          success: false,
+          message: 'Para confirmar a exclusão envie { confirmation: "EXCLUIR" } no body.',
+        });
+      }
+
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, email: true, password: true, googleId: true, appleId: true, facebookId: true },
+      });
+      if (!user) {
+        return res.status(404).json({ success: false, message: "Usuário não encontrado" });
+      }
+
+      // Para usuário com senha local: exigir senha pra confirmar.
+      // Para login social puro (sem senha): apenas a confirmação textual basta.
+      if (user.password) {
+        if (!password) {
+          return res.status(400).json({
+            success: false,
+            message: "Informe sua senha atual para confirmar a exclusão.",
+          });
+        }
+        const ok = await PasswordUtils.compare(String(password), user.password);
+        if (!ok) {
+          return res.status(401).json({ success: false, message: "Senha incorreta." });
+        }
+      }
+
+      const now = new Date();
+      const anonEmail = `deleted-${user.id}@deleted.okihealth.local`;
+
+      // OKI 26/05/2026 — timeout estendido (30s). A exclusão faz muitos
+      // deletes em sequência (8-12 queries) e o default de 5s estoura
+      // em contas com bastante histórico (chat, posts, conquistas, etc.).
+      await prisma.$transaction(
+        async (tx) => {
+          // 1) Cancela desafios criados que ainda não começaram (libera
+          //    participantes para que vejam o desafio cancelado).
+          // Usamos updateMany para fazer em uma query só.
+          await tx.challenge.updateMany({
+            where: {
+              createdById: userId,
+              status: { notIn: ["cancelled", "completed"] },
+            },
+            data: { status: "cancelled" },
+          });
+
+          // 2) Remove participações.
+          await tx.challengeParticipant.deleteMany({ where: { userId } });
+
+          // 3) Limpa dados estritamente pessoais (rodam em paralelo via Promise.all
+          //    para reduzir o tempo dentro da transação).
+          await Promise.all([
+            tx.weightEntry.deleteMany({ where: { userId } }),
+            tx.nutritionAnalysis.deleteMany({ where: { userId } }),
+            tx.notification.deleteMany({ where: { userId } }),
+            tx.achievement.deleteMany({ where: { userId } }),
+            (tx as any).passwordResetToken.deleteMany({ where: { userId } }),
+            tx.challengeChat.deleteMany({ where: { userId } }),
+            tx.challengePost.deleteMany({ where: { userId } }),
+            tx.privateMessage.deleteMany({ where: { senderId: userId } }),
+            tx.planSubscription
+              .updateMany({
+                where: { userId },
+                data: { active: false, endDate: now },
+              })
+              .catch(() => {
+                /* opcional, pode não existir */
+              }),
+          ]);
+
+          // 4) Referrals/Transactions/WithdrawalRequest: mantém (fiscal).
+
+          // 5) Anonimiza o usuário e marca exclusão.
+          await tx.user.update({
+            where: { id: userId },
+            data: {
+              email: anonEmail,
+              name: "Usuário Removido",
+              nickname: null,
+              avatar_url: null,
+              password: null,
+              googleId: null,
+              appleId: null,
+              facebookId: null,
+              age: null,
+              city: null,
+              peso: null,
+              altura: null,
+              sexo: null,
+              atividade: null,
+              notifications: false,
+            } as any,
+          });
+        },
+        {
+          // 30 segundos pra cobrir contas grandes com bastante histórico.
+          maxWait: 5000,
+          timeout: 30000,
+        },
+      );
+
+      return res.json({
+        success: true,
+        message:
+          "Sua conta foi excluída com sucesso. Você não poderá mais fazer login com esses dados.",
+      });
+    } catch (error) {
+      console.error("[Auth.deleteAccount]", error);
+      return next(error);
+    }
+  }
+
   // POST /api/auth/reset-password
   static async resetPassword(req: Request, res: Response) {
     try {

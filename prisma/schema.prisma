@@ -277,6 +277,12 @@ model WithdrawalRequest {
   adminNotes     String?   @db.Text
   processedAt    DateTime?
   processedBy    String?
+  // OKI 26/05/2026 #2 (V2): rastreio do PIX Out automático via MP.
+  mpPayoutId        String?   @db.VarChar(64)
+  mpPayoutStatus    String?   @db.VarChar(32)
+  mpPayoutError     String?   @db.Text
+  payoutAttemptedAt DateTime?
+  payoutCompletedAt DateTime?
   created_at     DateTime  @default(now())
   updated_at     DateTime  @updatedAt
   withdrawalType String    @default("bank")
@@ -286,6 +292,8 @@ model WithdrawalRequest {
 
   @@index([userId])
   @@index([status])
+  @@index([mpPayoutId])
+  @@index([mpPayoutStatus])
   @@map("withdrawal_requests")
 }
 
@@ -345,4 +353,24 @@ model WeightEntry {
   @@index([recordedAt])
   @@index([userId])
   @@map("weight_entries")
+}
+
+// OKI 26/05/2026 — credenciais OAuth da conta MP Pool. O backend usa
+// o access_token salvo aqui pra criar pagamentos com application_fee,
+// disparando o split do MP em duas contas.
+model MpMarketplaceCredential {
+  id                String   @id @default(uuid())
+  accountRole       String   @unique @map("account_role") @db.VarChar(32)
+  mpUserId          String   @map("mp_user_id") @db.VarChar(64)
+  accessToken       String   @map("access_token") @db.Text
+  refreshToken      String   @map("refresh_token") @db.Text
+  publicKey         String?  @map("public_key") @db.VarChar(255)
+  scope             String?  @db.VarChar(255)
+  expiresAt         DateTime @map("expires_at")
+  lastRefreshedAt   DateTime? @map("last_refreshed_at")
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+
+  @@index([mpUserId], map: "idx_mp_user_id")
+  @@map("mp_marketplace_credentials")
 }

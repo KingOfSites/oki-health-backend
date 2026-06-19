@@ -71,13 +71,22 @@ export class ChallengeRankingController {
         return first || "Usuário";
       };
 
-      // Formatar ranking
+      // OKI 24/05/2026 #16: enquanto não houver pontuação válida (todos
+      // com 0 pontos), o ranking inicia "zerado" — ninguém recebe
+      // posição numerada e o app pode mostrar uma mensagem amigável.
+      const hasAnyPoints = participants.some((p) => (p.points || 0) > 0);
+
+      // Formatar ranking. OKI 24/05/2026 #2: marca o criador do desafio
+      // com isCreator=true para que o app exiba a label "Criador" ao lado
+      // do nickname (visível para todos os participantes).
       const ranking = participants.map((p, index) => {
-        const position = index + 1;
+        const position = hasAnyPoints ? index + 1 : 0;
         let prize = 0;
-        if (position === 1) prize = challenge.firstPlacePrizeCents || 0;
-        else if (position === 2) prize = challenge.secondPlacePrizeCents || 0;
-        else if (position === 3) prize = challenge.thirdPlacePrizeCents || 0;
+        if (hasAnyPoints) {
+          if (position === 1) prize = challenge.firstPlacePrizeCents || 0;
+          else if (position === 2) prize = challenge.secondPlacePrizeCents || 0;
+          else if (position === 3) prize = challenge.thirdPlacePrizeCents || 0;
+        }
 
         return {
           position,
@@ -88,6 +97,8 @@ export class ChallengeRankingController {
           verifiedCount: Number(p.verified_count) || 0,
           prizeCents: prize,
           isCurrentUser: userId === p.userId,
+          isCreator: p.userId === challenge.createdById,
+          ranked: hasAnyPoints,
         };
       });
 
@@ -114,6 +125,10 @@ export class ChallengeRankingController {
             isFinished,
             status: challenge.status,
             createdById: challenge.createdById,
+            // OKI 24/05/2026 #16: sinaliza ao app se já existe alguma
+            // pontuação válida — quando false, o front exibe a tela
+            // "Ainda não há pontuação registrada".
+            hasRanking: hasAnyPoints,
           },
           ranking,
         },
@@ -159,7 +174,7 @@ export class ChallengeRankingController {
       if (challenge.status === "cancelled") {
         return res.status(409).json({
           success: false,
-          message: "Desafio cancelado nÃ£o pode distribuir prÃªmios",
+          message: "Desafio cancelado não pode distribuir prêmios",
         });
       }
 

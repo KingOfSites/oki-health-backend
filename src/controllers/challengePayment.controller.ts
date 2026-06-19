@@ -3,6 +3,10 @@ import prisma from "../config/database";
 import { MercadoPagoConfig, Payment, CardToken } from "mercadopago";
 import { ChallengesService } from "../services/challenges.service";
 import { ADMIN_FEE_RATE, computeAdminFeeFromReais } from "../utils/adminFee";
+// OKI 26/05/2026 — split na entrada: pagamento usa access_token da
+// conta Pool + application_fee, fazendo MP dividir automático em 25/75.
+import { MpMarketplaceService } from "../services/mpMarketplace.service";
+import { env } from "../config/env";
 
 // ======================================================
 // 🔑 CONFIG MERCADO PAGO - APENAS PRODUÇÃO
@@ -71,33 +75,34 @@ export class ChallengePaymentController {
       if (challenge.status === "cancelled") {
         return res.status(409).json({
           success: false,
-          message: "Este desafio foi cancelado e nÃ£o aceita novas entradas",
+          message: "Este desafio foi cancelado e não aceita novas entradas",
         });
       }
 
       if (challenge.status === "completed") {
         return res.status(409).json({
           success: false,
-          message: "Este desafio jÃ¡ foi concluÃ­do e nÃ£o aceita novas entradas",
+          message: "Este desafio já foi concluído e não aceita novas entradas",
         });
       }
 
-      // O criador é o organizador — nunca paga taxa de entrada do
-      // próprio desafio. Se chegou aqui, garantimos a participação
-      // direta (idempotente) e devolvemos sucesso sem chamar o MP.
+      // OKI 26/05/2026 — criador nunca paga taxa de entrada do próprio
+      // desafio. Antes, qualquer chamada a esse endpoint pelo criador
+      // adicionava ele em challenge_participants automaticamente, o que
+      // burlava o modo "Observador" escolhido na criação. Agora só
+      // confirmamos que ele já é o organizador; participação é decisão
+      // explícita feita pelo botão "Participar".
       if (challenge.createdById === userId) {
         const existing = await prisma.challengeParticipant.findUnique({
           where: { userId_challengeId: { userId, challengeId } },
         });
-        if (!existing) {
-          await prisma.challengeParticipant.create({
-            data: { userId, challengeId, progress: 0, points: 0 },
-          });
-        }
         return res.json({
           success: true,
-          alreadyJoined: true,
-          message: "Você é o criador deste desafio e já está participando.",
+          alreadyJoined: Boolean(existing),
+          isCreator: true,
+          message: existing
+            ? "Você é o criador e está participando deste desafio."
+            : "Você é o criador (observador) deste desafio.",
         });
       }
 
@@ -357,14 +362,54 @@ export class ChallengePaymentController {
       const email = payer?.email || "pagador@oki.com";
 
       // ======================================================
+      // 🧩 OKI 26/05/2026 — RESOLVER MP CLIENT COM SPLIT
+      // ======================================================
+      // Se a conta Pool já autorizou via OAuth: usamos o access_token
+      // dela + application_fee = 25%. MP divide automaticamente:
+      //   25% (application_fee)         → conta Oki principal
+      //   75% (transaction_amount - fee) → conta Pool
+      // Se a Pool ainda não autorizou: cai no fluxo legado (tudo na
+      // conta Oki principal) e o split fica só no DB (como já está).
+      const poolCred = await MpMarketplaceService.getPoolAccessToken();
+      const splitEnabled = Boolean(poolCred.token);
+      const paymentClient = splitEnabled
+        ? new MercadoPagoConfig({ accessToken: poolCred.token! })
+        : mp;
+      const applicationFeeRate = env.MP_MARKETPLACE_APPLICATION_FEE_RATE;
+      const applicationFee = splitEnabled
+        ? Math.round(amountWithFee * applicationFeeRate * 100) / 100
+        : 0;
+      const splitMetadata = splitEnabled
+        ? {
+            split_enabled: true,
+            pool_user_id: poolCred.mpUserId || "",
+            application_fee_rate: applicationFeeRate,
+            application_fee_amount: applicationFee,
+          }
+        : { split_enabled: false };
+
+      if (splitEnabled) {
+        console.log(
+          `🧩 [ChallengePayment] Split MP ON — application_fee R$ ${applicationFee.toFixed(2)} (${Math.round(applicationFeeRate * 100)}%) → Oki main. Pool ${poolCred.mpUserId} recebe R$ ${(amountWithFee - applicationFee).toFixed(2)}.`,
+        );
+      } else {
+        console.log(
+          `⚠️ [ChallengePayment] Split MP OFF (Pool não autorizada). Fluxo legado: tudo na Oki main, split apenas no DB.`,
+        );
+      }
+
+      // ======================================================
       // 🔵 PIX
       // ======================================================
       if (type === "pix") {
-        const payment = await new Payment(mp).create({
+        const payment = await new Payment(paymentClient).create({
           body: {
             transaction_amount: amountWithFee,
             payment_method_id: "pix",
             description: `Entrada no desafio: ${challenge.title}`,
+            ...(splitEnabled && applicationFee > 0
+              ? { application_fee: applicationFee }
+              : {}),
             payer: {
               first_name: firstName,
               last_name: lastName,
@@ -374,7 +419,9 @@ export class ChallengePaymentController {
                 number: cpfDigits,
               },
             },
-          },
+            metadata: splitMetadata,
+            external_reference: `challenge:${challengeId}:user:${userId}`,
+          } as any,
         });
 
         await prisma.transaction.create({
@@ -450,6 +497,8 @@ export class ChallengePaymentController {
         // -------------------------------
         // 1) Criar TOKEN do cartão
         // -------------------------------
+        // OKI 26/05/2026 — token do cartão sempre criado com a chave da
+        // Oki principal (a Pool não tem credenciais públicas próprias).
         const token = await new CardToken(mp).create({
           body: {
             card_number: cardNumber,
@@ -469,12 +518,17 @@ export class ChallengePaymentController {
         // -------------------------------
         // 2) Criar PAGAMENTO cartão
         // -------------------------------
-        const payment = await new Payment(mp).create({
+        // OKI 26/05/2026 — pagamento usa client com token da Pool +
+        // application_fee quando split habilitado.
+        const payment = await new Payment(paymentClient).create({
           body: {
             transaction_amount: amountWithFee,
             token: token.id,
             description: `Entrada no desafio: ${challenge.title}`,
             installments: 1,
+            ...(splitEnabled && applicationFee > 0
+              ? { application_fee: applicationFee }
+              : {}),
             payer: {
               email,
               first_name: firstName,
@@ -484,7 +538,9 @@ export class ChallengePaymentController {
                 number: cpfDigits,
               },
             },
-          },
+            metadata: splitMetadata,
+            external_reference: `challenge:${challengeId}:user:${userId}`,
+          } as any,
         });
 
         // Salvar transação
@@ -669,21 +725,21 @@ export class ChallengePaymentController {
       if (!challengeState.exists) {
         return res.status(404).json({
           success: false,
-          message: "Desafio nÃ£o encontrado",
+          message: "Desafio não encontrado",
         });
       }
 
       if (challengeState.isCancelled) {
         return res.status(409).json({
           success: false,
-          message: "Este desafio foi cancelado e nÃ£o aceita novas entradas",
+          message: "Este desafio foi cancelado e não aceita novas entradas",
         });
       }
 
       if (challengeState.isCompleted) {
         return res.status(409).json({
           success: false,
-          message: "Este desafio jÃ¡ foi concluÃ­do e nÃ£o aceita novas entradas",
+          message: "Este desafio já foi concluído e não aceita novas entradas",
         });
       }
 

@@ -58,6 +58,13 @@ router.put(
 );
 
 /**
+ * @route   DELETE /api/auth/account
+ * @desc    Excluir a conta do próprio usuário (LGPD + App Store/Play)
+ * @access  Private
+ */
+router.delete("/account", authenticate, AuthController.deleteAccount);
+
+/**
  * @route   POST /api/auth/forgot-password
  * @desc    Solicitar recuperação de senha
  * @access  Public

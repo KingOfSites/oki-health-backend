@@ -10,7 +10,7 @@ export class NotificationsController {
   ) {
     try {
       if (!req.userId) {
-        return res.status(401).json({ success: false, message: "NÃ£o autenticado" });
+        return res.status(401).json({ success: false, message: "Não autenticado" });
       }
 
       const notifications = await prisma.notification.findMany({
@@ -34,7 +34,7 @@ export class NotificationsController {
   ) {
     try {
       if (!req.userId) {
-        return res.status(401).json({ success: false, message: "NÃ£o autenticado" });
+        return res.status(401).json({ success: false, message: "Não autenticado" });
       }
 
       await prisma.notification.updateMany({
@@ -61,7 +61,7 @@ export class NotificationsController {
   ) {
     try {
       if (!req.userId) {
-        return res.status(401).json({ success: false, message: "NÃ£o autenticado" });
+        return res.status(401).json({ success: false, message: "Não autenticado" });
       }
 
       await prisma.notification.updateMany({

@@ -709,62 +709,76 @@ router.post("/verify-gym", authenticate, async (req, res) => {
     `
       : "";
 
-    // PROMPT DA IA — VERIFICAÇÃO DE FOTO EM ACADEMIA
+    // PROMPT DA IA — VERIFICAÇÃO DE FOTO EM ACADEMIA.
+    // OKI 26/05/2026 #5: reduzimos falsos negativos. A regra anterior
+    // exigia presença humana, ângulo amplo e cenário "comercial perfeito"
+    // — o que rejeitava registros legítimos feitos dentro de academias
+    // (close em equipamentos, selfies no espelho, áreas de funcional,
+    // box de crossfit, academias menores etc.). Agora o critério é
+    // pragmático: se a imagem mostra equipamentos típicos ou ambiente de
+    // treino reconhecível, e não há sinais claros de fraude, aprovamos.
     const prompt = `
-    Você é um sistema rigoroso de validação de fotos para desafios fitness com recompensa.
-    
-    Sua tarefa é analisar **APENAS a imagem enviada** e decidir se ela é **válida ou inválida** para um desafio de academia.
-    
-    ⚠️ REGRA PRINCIPAL:
-    Se houver QUALQUER DÚVIDA, inconsistência ou falta de evidência clara → REJEITE.
-    
+    Você é um validador de fotos para desafios fitness em ambientes de treino.
+
+    Analise APENAS a imagem enviada e decida se ela é um registro válido
+    em uma academia, box de crossfit, sala de musculação, área de
+    funcional ou similar. Seja PRAGMÁTICO — o objetivo é evitar fraudes
+    óbvias, NÃO rejeitar registros legítimos.
+
     ---
-    
-    ### CRITÉRIOS OBRIGATÓRIOS (TODOS DEVEM SER ATENDIDOS):
-    
-    1️⃣ A imagem foi tirada DENTRO de uma academia real:
-    - Presença clara de equipamentos de academia (máquinas, halteres, barras, anilhas, esteiras, racks, etc.)
-    - Ambiente típico de academia (espelhos grandes, piso de borracha, iluminação artificial, layout comercial)
-    
-    2️⃣ Evidências de que a foto NÃO é:
-    - Uma selfie em casa
-    - Um parque, rua ou ambiente externo
-    - Um print de tela, imagem reciclada, foto antiga ou de rede social
-    - Uma imagem editada ou claramente reaproveitada
-    
-    3️⃣ Evidências de atualidade:
-    - Aparência espontânea (não posada demais, não promocional)
-    - Iluminação e qualidade compatíveis com uma foto casual de celular
-    - Ausência de marcas de print (bordas, overlays, textos, UI de apps)
-    
-    4️⃣ Presença humana:
-    - Deve existir ao menos uma pessoa visível OU reflexo realista em espelho
-    - Rejeite imagens apenas do ambiente vazio
-    
+
+    ### APROVE (verified = true) quando AO MENOS UM destes for verdade:
+
+    1) Há equipamentos típicos visíveis (máquinas, halteres, anilhas,
+       barras, racks, kettlebells, esteiras, bicicletas ergométricas,
+       cordas, caixas pliométricas, espelhos grandes de academia, etc.).
+    2) O ambiente é claramente de treino (piso emborrachado, espelhos
+       longos, sinalização de academia, área de alongamento, box de
+       crossfit, áreas de funcional, ringues, tatames de luta).
+    3) Selfie/foto da pessoa em frente ao espelho da academia, com
+       equipamento de fundo, conta como academia.
+    4) Close em um aparelho ou peso sendo usado também conta — não é
+       necessário que tenha uma pessoa visível.
+
+    ### REJEITE (verified = false) APENAS quando houver indícios claros:
+
+    - Captura de tela com UI de outro app, watermark de rede social,
+      texto sobreposto óbvio.
+    - Foto manifestamente externa (rua, praia, parque) SEM nenhum
+      equipamento ou contexto fitness.
+    - Imagem reaproveitada de banco/marketing (qualidade de estúdio,
+      pose promocional, modelo profissional).
+    - Foto totalmente sem relação com treino (animais, comida, paisagem,
+      print de jogo, etc.).
+
+    Na dúvida entre aprovar e rejeitar, APROVE quando houver qualquer
+    elemento característico de academia.
+
     ---
-    
+
     ${challengeContext}
-    
+
     ⏰ IMPORTANTE SOBRE HORÁRIO:
-    - NÃO tente verificar horário pela imagem
-    - O horário será validado separadamente pelo timestamp da mensagem (${messageTime} do dia ${messageDate})
-    
+    - NÃO tente verificar horário pela imagem.
+    - O horário será validado separadamente pelo timestamp da mensagem
+      (${messageTime} do dia ${messageDate}).
+
     ---
-    
+
     ⛔ FORMATO DE RESPOSTA (OBRIGATÓRIO):
-    Retorne **APENAS JSON PURO**, sem texto extra, sem markdown.
-    
+    Retorne APENAS JSON puro, sem texto extra, sem markdown.
+
     {
       "isGym": true ou false,
       "confidence": número entre 0.0 e 1.0,
       "reason": "Motivo curto, objetivo e técnico",
       "verified": true ou false
     }
-    
+
     ### REGRAS FINAIS:
-    - "verified" só pode ser true se **TODOS os critérios forem claramente atendidos**
-    - Se confidence < 0.75 → verified deve ser false
-    - Em caso de dúvida → verified = false
+    - Aprove (verified = true) sempre que isGym = true e confidence >= 0.55.
+    - Só rejeite (verified = false) quando houver indício claro de
+      fraude/imagem fora de contexto.
     `;
 
     // Baixar a imagem da URL e converter para base64
@@ -1139,8 +1153,8 @@ router.post("/verify-gym", authenticate, async (req, res) => {
               if (verificationCount === 0) {
                 const pointsToAdd = 1; // 1 ponto por dia
                 await prisma.$executeRawUnsafe(
-                  `UPDATE challenge_participants 
-                   SET points = points + ? 
+                  `UPDATE challenge_participants
+                   SET points = points + ?
                    WHERE userId = ? AND challengeId = ?`,
                   pointsToAdd,
                   userId,
@@ -1149,6 +1163,79 @@ router.post("/verify-gym", authenticate, async (req, res) => {
                 console.log(
                   `✅ [AI Verify Gym] ${pointsToAdd} ponto adicionado ao participante (primeira verificação do dia)`,
                 );
+
+                // OKI 24/05/2026 #15: bônus de 100 pontos ao bater a
+                // meta semanal (frequência configurada no desafio).
+                // Calculamos quantos dias da SEMANA corrente (segunda a
+                // domingo) já têm verificação aprovada; se acabou de
+                // bater a meta, somamos os 99 pontos restantes para
+                // totalizar 100 (1 do dia + 99 do bônus).
+                try {
+                  const challengeFreq = (await prisma.$queryRawUnsafe(
+                    `SELECT frequency FROM challenges WHERE id = ?`,
+                    challengeId,
+                  )) as any[];
+                  const freqStr = challengeFreq?.[0]?.frequency || "daily";
+                  const match = String(freqStr).match(/\d+/);
+                  const weeklyGoal = match ? parseInt(match[0], 10) : null;
+
+                  if (weeklyGoal && weeklyGoal > 0) {
+                    const weekDays = (await prisma.$queryRawUnsafe(
+                      `SELECT COUNT(DISTINCT DATE(verifiedAt)) AS days
+                         FROM challenge_chat
+                        WHERE userId = ?
+                          AND challengeId = ?
+                          AND verificationStatus = 'verified'
+                          AND YEARWEEK(verifiedAt, 1) = YEARWEEK(CURDATE(), 1)`,
+                      userId,
+                      challengeId,
+                    )) as any[];
+                    const daysThisWeek = Number(weekDays?.[0]?.days || 0);
+
+                    // Verifica se há um bônus prévio nesta semana — se
+                    // não, e acabamos de cravar a meta, paga 99 a mais.
+                    const previousBonus = (await prisma.$queryRawUnsafe(
+                      `SELECT id FROM transactions
+                        WHERE userId = ? AND challengeId = ?
+                          AND type = 'weekly_goal_bonus'
+                          AND YEARWEEK(created_at, 1) = YEARWEEK(CURDATE(), 1)
+                        LIMIT 1`,
+                      userId,
+                      challengeId,
+                    )) as any[];
+
+                    if (
+                      daysThisWeek >= weeklyGoal &&
+                      (!previousBonus || previousBonus.length === 0)
+                    ) {
+                      await prisma.$executeRawUnsafe(
+                        `UPDATE challenge_participants
+                            SET points = points + 99
+                          WHERE userId = ? AND challengeId = ?`,
+                        userId,
+                        challengeId,
+                      );
+                      // Registro de auditoria — usamos transactions
+                      // apenas como ledger, sem mexer no saldo (amount=0).
+                      await prisma.$executeRawUnsafe(
+                        `INSERT INTO transactions
+                          (id, userId, challengeId, type, amount, status, description, created_at)
+                         VALUES (UUID(), ?, ?, 'weekly_goal_bonus', 0, 'completed',
+                           'Bônus de 100 pts por bater a meta semanal', NOW())`,
+                        userId,
+                        challengeId,
+                      );
+                      console.log(
+                        `🏆 [AI Verify Gym] Bônus de 100 pts (meta semanal) adicionado.`,
+                      );
+                    }
+                  }
+                } catch (bonusErr) {
+                  console.error(
+                    "⚠️ [AI Verify Gym] Erro ao calcular bônus semanal:",
+                    bonusErr,
+                  );
+                }
               } else {
                 console.log(
                   `ℹ️ [AI Verify Gym] Participante já recebeu ponto hoje (${verificationCount} verificação(ões) hoje). Não adicionando mais pontos.`,

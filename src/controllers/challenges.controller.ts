@@ -274,7 +274,11 @@ export class ChallengesController {
         // foi selecionado, sem depender de cálculos a partir de start/end.
         durationWeeks: durationWeeks != null ? parseInt(durationWeeks) : null,
       };
-      challengePayload.creatorParticipates = creatorParticipates !== false;
+      // OKI 24/05/2026 #14: o criador NÃO entra como participante por default.
+      // Só vira participante se o frontend pedir explicitamente (`true`). Isso
+      // permite que o modal pós-criação ofereça "Criar e participar" (chama
+      // joinChallenge) vs "Apenas observar" (não entra no pool).
+      challengePayload.creatorParticipates = creatorParticipates === true;
       
       // Adicionar horários apenas se foram fornecidos
       if (processedStartTime !== null) {
@@ -510,10 +514,15 @@ static async searchChallenges(req: AuthRequest, res: Response, next: NextFunctio
       }
 
       const accessCode = (req.body?.accessCode as string | undefined)?.trim();
+      // OKI 26/05/2026 — caller precisa marcar explicitamente quando o
+      // criador realmente quer participar do próprio desafio. Sem essa
+      // flag, joinChallenge devolve "criador-observador" sem mexer no DB.
+      const creatorJoins = req.body?.creatorJoins === true;
       const result = await ChallengesService.joinChallenge(
         req.userId,
         challengeId,
         accessCode,
+        creatorJoins,
       );
 
       // 🟧 Desafio privado exige código de acesso
@@ -567,7 +576,7 @@ static async searchChallenges(req: AuthRequest, res: Response, next: NextFunctio
         return res.status(409).json({
           success: false,
           challengeCancelled: true,
-          message: (result as any).message || "Este desafio foi cancelado e nÃ£o aceita novas entradas.",
+          message: (result as any).message || "Este desafio foi cancelado e não aceita novas entradas.",
         });
       }
 
@@ -659,14 +668,14 @@ static async searchChallenges(req: AuthRequest, res: Response, next: NextFunctio
         if ((result as any).reason === "already_completed") {
           return res.status(409).json({
             success: false,
-            message: "Este desafio jÃ¡ foi concluÃ­do e nÃ£o pode ser cancelado",
+            message: "Este desafio já foi concluído e não pode ser cancelado",
           });
         }
 
         if ((result as any).reason === "already_cancelled") {
           return res.status(409).json({
             success: false,
-            message: "Este desafio jÃ¡ foi cancelado",
+            message: "Este desafio já foi cancelado",
           });
         }
 
@@ -702,7 +711,7 @@ static async searchChallenges(req: AuthRequest, res: Response, next: NextFunctio
         success: true,
         message:
           (result as any).mode === "deleted"
-            ? "Desafio excluÃ­do com sucesso"
+            ? "Desafio excluído com sucesso"
             : "Desafio cancelado com sucesso",
         data:
           (result as any).mode === "cancelled"
@@ -723,19 +732,19 @@ static async searchChallenges(req: AuthRequest, res: Response, next: NextFunctio
   static async cancelChallenge(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       if (!req.userId) {
-        return res.status(401).json({ success: false, message: "NÃ£o autenticado" });
+        return res.status(401).json({ success: false, message: "Não autenticado" });
       }
 
       const challengeId = req.params.id;
       if (!challengeId) {
-        return res.status(400).json({ success: false, message: "ID do desafio nÃ£o fornecido" });
+        return res.status(400).json({ success: false, message: "ID do desafio não fornecido" });
       }
 
       const result = await ChallengesService.cancelChallenge(challengeId, req.userId);
 
       if (!result.ok) {
         if (result.reason === "not_found") {
-          return res.status(404).json({ success: false, message: "Desafio nÃ£o encontrado" });
+          return res.status(404).json({ success: false, message: "Desafio não encontrado" });
         }
 
         if (result.reason === "forbidden") {
@@ -748,14 +757,14 @@ static async searchChallenges(req: AuthRequest, res: Response, next: NextFunctio
         if (result.reason === "already_cancelled") {
           return res.status(409).json({
             success: false,
-            message: "Este desafio jÃ¡ foi cancelado",
+            message: "Este desafio já foi cancelado",
           });
         }
 
         if (result.reason === "already_completed") {
           return res.status(409).json({
             success: false,
-            message: "Este desafio jÃ¡ foi concluÃ­do e nÃ£o pode ser cancelado",
+            message: "Este desafio já foi concluído e não pode ser cancelado",
           });
         }
 
@@ -786,12 +795,12 @@ static async searchChallenges(req: AuthRequest, res: Response, next: NextFunctio
   static async updateChallenge(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       if (!req.userId) {
-        return res.status(401).json({ success: false, message: "NÃ£o autenticado" });
+        return res.status(401).json({ success: false, message: "Não autenticado" });
       }
 
       const challengeId = req.params.id;
       if (!challengeId) {
-        return res.status(400).json({ success: false, message: "ID do desafio invÃ¡lido" });
+        return res.status(400).json({ success: false, message: "ID do desafio inválido" });
       }
 
       const result = await ChallengesService.updateChallenge(challengeId, req.userId, req.body);
@@ -807,42 +816,42 @@ static async searchChallenges(req: AuthRequest, res: Response, next: NextFunctio
         if (result.reason === "already_cancelled") {
           return res.status(409).json({
             success: false,
-            message: "Este desafio jÃ¡ foi cancelado e nÃ£o pode ser editado",
+            message: "Este desafio já foi cancelado e não pode ser editado",
           });
         }
 
         if (result.reason === "already_completed") {
           return res.status(409).json({
             success: false,
-            message: "Este desafio jÃ¡ foi concluÃ­do e nÃ£o pode ser editado",
+            message: "Este desafio já foi concluído e não pode ser editado",
           });
         }
 
         if (result.reason === "invalid_start_time") {
           return res.status(400).json({
             success: false,
-            message: "Formato de horÃ¡rio inicial invÃ¡lido. Use HH:MM",
+            message: "Formato de horário inicial inválido. Use HH:MM",
           });
         }
 
         if (result.reason === "invalid_end_time") {
           return res.status(400).json({
             success: false,
-            message: "Formato de horÃ¡rio final invÃ¡lido. Use HH:MM",
+            message: "Formato de horário final inválido. Use HH:MM",
           });
         }
 
         if (result.reason === "incomplete_time_window") {
           return res.status(400).json({
             success: false,
-            message: "Se fornecer horÃ¡rios, envie horÃ¡rio inicial e final",
+            message: "Se fornecer horários, envie horário inicial e final",
           });
         }
 
         if (result.reason === "invalid_time_window") {
           return res.status(400).json({
             success: false,
-            message: "O horÃ¡rio final deve ser posterior ao horÃ¡rio inicial",
+            message: "O horário final deve ser posterior ao horário inicial",
           });
         }
       }
